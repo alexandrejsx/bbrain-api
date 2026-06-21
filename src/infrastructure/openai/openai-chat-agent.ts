@@ -32,7 +32,10 @@ interface OpenAiResponsesRequest {
   model: string;
   store: false;
   instructions: string;
-  input: string;
+  input: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+  }>;
   max_output_tokens: number;
   text: {
     format: {
@@ -78,7 +81,7 @@ export class OpenAiChatAgent implements ChatAgent {
       model,
       store: false,
       instructions: buildChatSystemInstruction(request),
-      input: request.message,
+      input: [...request.context.recentMessages, { role: 'user', content: request.message }],
       max_output_tokens: 1200,
       text: {
         format: {

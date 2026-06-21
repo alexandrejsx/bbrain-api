@@ -26,6 +26,7 @@ export class ChatController {
     try {
       return await this.sendChatMessageUseCase.execute({
         userId: request.user!.id,
+        conversationId: dto.conversationId,
         message: dto.message
       });
     } catch (error) {

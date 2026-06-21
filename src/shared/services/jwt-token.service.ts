@@ -8,8 +8,7 @@ export class JwtTokenService {
 
   signUser(user: User): Promise<string> {
     return this.jwtService.signAsync({
-      sub: user.id.value,
-      email: user.email.value
+      sub: user.id.value
     });
   }
 }

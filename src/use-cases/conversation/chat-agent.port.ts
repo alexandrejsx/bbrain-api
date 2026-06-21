@@ -1,5 +1,5 @@
-import { ReflectiveProfile } from '../../domain/conversation/entities/reflective-profile.entity';
 import { ConversationScopeStatus } from '../../domain/conversation/services/conversation-scope-policy.service';
+import { AIContext } from '../../modules/ai-context/ai-context.types';
 
 export type ChatRiskLevel = 'none' | 'low' | 'medium' | 'high';
 
@@ -23,7 +23,7 @@ export interface ChatAgentResponse {
 
 export interface ChatAgentRequest {
   message: string;
-  profile: ReturnType<ReflectiveProfile['toJson']>;
+  context: AIContext;
 }
 
 export interface ChatAgent {

@@ -5,13 +5,11 @@ export interface AuthenticatedRequest {
   headers: Record<string, string | string[] | undefined>;
   user?: {
     id: string;
-    email?: string;
   };
 }
 
 interface JwtPayload {
   sub?: unknown;
-  email?: unknown;
 }
 
 @Injectable()
@@ -35,8 +33,7 @@ export class JwtAuthGuard implements CanActivate {
       }
 
       request.user = {
-        id: payload.sub,
-        email: typeof payload.email === 'string' ? payload.email : undefined
+        id: payload.sub
       };
       return true;
     } catch {

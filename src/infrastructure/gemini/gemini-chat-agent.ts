@@ -75,6 +75,10 @@ export class GeminiChatAgent implements ChatAgent {
         parts: [{ text: buildChatSystemInstruction(request) }]
       },
       contents: [
+        ...request.context.recentMessages.map((message) => ({
+          role: message.role === 'assistant' ? ('model' as const) : ('user' as const),
+          parts: [{ text: message.content }]
+        })),
         {
           role: 'user',
           parts: [{ text: request.message }]

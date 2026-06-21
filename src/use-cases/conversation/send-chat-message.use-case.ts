@@ -1,13 +1,19 @@
-import { ReflectiveProfile } from '../../domain/conversation/entities/reflective-profile.entity';
 import { ReflectiveProfileRepository } from '../../domain/conversation/repositories/reflective-profile.repository';
 import {
   ConversationScopePolicy,
   ConversationScopeStatus
 } from '../../domain/conversation/services/conversation-scope-policy.service';
+import { AIContextService } from '../../modules/ai-context/ai-context.service';
+import { AIContextMessageRepository } from '../../modules/ai-context/ai-context-message.repository';
 import { ChatAgent, ChatRiskLevel } from './chat-agent.port';
+import { ProfileUpdateService } from './profile-update.service';
+
+const PROFILE_SETUP_REPLY =
+  'Antes de continuarmos, quero conhecer um pouco melhor você para que o BBrain possa te acompanhar com mais cuidado. Vamos configurar seu perfil?';
 
 export interface SendChatMessageInput {
   userId: string;
+  conversationId?: string;
   message: string;
 }
 
@@ -28,42 +34,64 @@ export class SendChatMessageUseCase {
   constructor(
     private readonly profileRepository: ReflectiveProfileRepository,
     private readonly chatAgent: ChatAgent,
-    private readonly scopePolicy: ConversationScopePolicy
+    private readonly scopePolicy: ConversationScopePolicy,
+    private readonly aiContextService: AIContextService,
+    private readonly profileUpdateService: ProfileUpdateService,
+    private readonly messageRepository: AIContextMessageRepository
   ) {}
 
   async execute(input: SendChatMessageInput): Promise<SendChatMessageOutput> {
-    const profile =
-      (await this.profileRepository.findByUserId(input.userId)) ??
-      ReflectiveProfile.create(input.userId);
+    const contextResult = await this.aiContextService.build(input.userId, input.conversationId);
+
+    if (!contextResult.profileConfigured) {
+      return {
+        reply: PROFILE_SETUP_REPLY,
+        riskLevel: 'none',
+        scopeStatus: 'in_scope'
+      };
+    }
+
+    const profile = contextResult.sourceProfile;
+    if (!profile) throw new Error('Configured reflective profile was not found');
 
     let agentResponse;
     try {
       agentResponse = await this.chatAgent.respond({
         message: input.message,
-        profile: profile.toJson()
+        context: contextResult.context
       });
     } catch {
       throw new ChatProviderUnavailableError();
     }
 
     const now = new Date();
-    const profileUpdate = agentResponse.profileUpdate.shouldUpdate
-      ? this.scopePolicy.resolveProfileUpdate(
-          agentResponse.scopeStatus,
-          agentResponse.profileUpdate
-        )
-      : undefined;
+    this.profileUpdateService.apply(
+      profile,
+      agentResponse.scopeStatus,
+      agentResponse.profileUpdate,
+      input.message,
+      now
+    );
 
-    if (profileUpdate) {
-      profile.applyUpdate(profileUpdate, now);
-    } else {
-      profile.registerInteraction(now);
+    const reply = this.scopePolicy.resolveReply(agentResponse.scopeStatus, agentResponse.reply);
+    const persistenceTasks: Promise<void>[] = [this.profileRepository.save(profile)];
+
+    if (input.conversationId) {
+      persistenceTasks.push(
+        this.messageRepository.appendExchange(
+          input.userId,
+          input.conversationId,
+          input.message,
+          reply,
+          now
+        )
+      );
     }
 
-    await this.profileRepository.save(profile);
+    await Promise.all(persistenceTasks);
 
     return {
-      reply: this.scopePolicy.resolveReply(agentResponse.scopeStatus, agentResponse.reply),
+      reply,
       riskLevel: agentResponse.riskLevel,
       scopeStatus: agentResponse.scopeStatus
     };

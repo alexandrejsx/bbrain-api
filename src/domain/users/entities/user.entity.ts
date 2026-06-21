@@ -1,21 +1,19 @@
 import { AggregateRoot } from '../../core/aggregate-root';
 import { UserCreatedEvent } from '../events/user-created.event';
 import { UserLoggedInEvent } from '../events/user-logged-in.event';
+import type { UserProfileSnapshot } from './user-profile.types';
 import { Email } from '../value-objects/email.vo';
 import { UserName } from '../value-objects/user-name.vo';
 import { Uuid } from '../../shared/uuid.vo';
-
-export type UserGender = 'male' | 'female' | 'other' | 'prefer_not_to_say';
 
 export interface UserProps {
   name: UserName;
   email: Email;
   passwordHash: string;
-  birthDate?: Date;
-  gender?: UserGender;
   phone?: string;
   timezone: string;
   acceptedTermsAt: Date;
+  profile?: UserProfileSnapshot;
   createdAt: Date;
   updatedAt: Date;
   lastLoginAt?: Date;
@@ -64,6 +62,23 @@ export class User extends AggregateRoot<UserProps> {
     this.addDomainEvent(new UserLoggedInEvent(this.id.value));
   }
 
+  updateBasicInfo(
+    input: {
+      name: string;
+      timezone?: string;
+    },
+    date = new Date()
+  ): void {
+    this.props.name = new UserName(input.name);
+    this.props.timezone = input.timezone ?? this.props.timezone;
+    this.props.updatedAt = date;
+  }
+
+  updateProfile(profile: UserProfileSnapshot, date = new Date()): void {
+    this.props.profile = profile;
+    this.props.updatedAt = date;
+  }
+
   get name(): UserName {
     return this.props.name;
   }
@@ -76,14 +91,6 @@ export class User extends AggregateRoot<UserProps> {
     return this.props.passwordHash;
   }
 
-  get birthDate(): Date | undefined {
-    return this.props.birthDate;
-  }
-
-  get gender(): UserGender | undefined {
-    return this.props.gender;
-  }
-
   get phone(): string | undefined {
     return this.props.phone;
   }
@@ -94,6 +101,10 @@ export class User extends AggregateRoot<UserProps> {
 
   get acceptedTermsAt(): Date {
     return this.props.acceptedTermsAt;
+  }
+
+  get profile(): UserProfileSnapshot | undefined {
+    return this.props.profile;
   }
 
   get createdAt(): Date {
@@ -113,8 +124,6 @@ export class User extends AggregateRoot<UserProps> {
       id: this.id.value,
       name: this.name.value,
       email: this.email.value,
-      birthDate: this.birthDate?.toISOString(),
-      gender: this.gender,
       phone: this.phone,
       timezone: this.timezone,
       createdAt: this.createdAt.toISOString(),

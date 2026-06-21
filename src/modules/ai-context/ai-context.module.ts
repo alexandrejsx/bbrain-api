@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { getModelToken, MongooseModule } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ReflectiveProfileRepository } from '../../domain/conversation/repositories/reflective-profile.repository';
+import { UserRepository } from '../../domain/users/repositories/user.repository';
 import { MongoAIContextMessageRepository } from '../../infrastructure/database/mongodb/repositories/mongo-ai-context-message.repository';
 import { MongoReflectiveProfileRepository } from '../../infrastructure/database/mongodb/repositories/mongo-reflective-profile.repository';
 import { MongodbRepository } from '../../infrastructure/database/mongodb/mongodb.repository';
@@ -19,13 +20,16 @@ import {
   AI_CONTEXT_MESSAGES_BASE_REPOSITORY,
   AI_CONTEXT_MESSAGES_REPOSITORY,
   REFLECTIVE_PROFILES_BASE_REPOSITORY,
-  REFLECTIVE_PROFILES_REPOSITORY
+  REFLECTIVE_PROFILES_REPOSITORY,
+  USERS_REPOSITORY
 } from '../tokens';
+import { UsersModule } from '../users.module';
 import { AIContextMessageRepository } from './ai-context-message.repository';
 import { AIContextService } from './ai-context.service';
 
 @Module({
   imports: [
+    UsersModule,
     MongooseModule.forFeature([
       { name: ConversationMessageMongo.name, schema: ConversationMessageSchema },
       { name: ReflectiveProfileMongo.name, schema: ReflectiveProfileSchema }
@@ -59,10 +63,11 @@ import { AIContextService } from './ai-context.service';
     {
       provide: AIContextService,
       useFactory: (
+        userRepository: UserRepository,
         profileRepository: ReflectiveProfileRepository,
         messageRepository: AIContextMessageRepository
-      ) => new AIContextService(profileRepository, messageRepository),
-      inject: [REFLECTIVE_PROFILES_REPOSITORY, AI_CONTEXT_MESSAGES_REPOSITORY]
+      ) => new AIContextService(userRepository, profileRepository, messageRepository),
+      inject: [USERS_REPOSITORY, REFLECTIVE_PROFILES_REPOSITORY, AI_CONTEXT_MESSAGES_REPOSITORY]
     }
   ],
   exports: [AIContextService, AI_CONTEXT_MESSAGES_REPOSITORY, REFLECTIVE_PROFILES_REPOSITORY]

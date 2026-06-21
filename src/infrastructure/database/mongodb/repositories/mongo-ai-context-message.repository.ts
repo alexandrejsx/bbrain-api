@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
 import { AIContextMessageRepository } from '../../../../modules/ai-context/ai-context-message.repository';
 import { AIContextMessage } from '../../../../modules/ai-context/ai-context.types';
+import { MongoConversationMessageMapper } from '../mappers/conversation-message.mapper';
 import { MongodbRepository } from '../mongodb.repository';
 import { ConversationMessageDocument } from '../schemas/conversation-message.schema';
 
@@ -18,10 +18,7 @@ export class MongoAIContextMessageRepository implements AIContextMessageReposito
       limit
     );
 
-    return messages.reverse().map((message) => ({
-      role: message.role,
-      content: message.content
-    }));
+    return messages.reverse().map((message) => MongoConversationMessageMapper.toDomain(message));
   }
 
   async appendExchange(
@@ -32,22 +29,20 @@ export class MongoAIContextMessageRepository implements AIContextMessageReposito
     createdAt: Date
   ): Promise<void> {
     await this.baseRepository.insertMany([
-      {
-        _id: randomUUID(),
-        user_id: userId,
-        conversation_id: conversationId,
+      MongoConversationMessageMapper.toPersistence({
+        userId,
+        conversationId,
         role: 'user',
         content: userMessage,
-        created_at: createdAt
-      },
-      {
-        _id: randomUUID(),
-        user_id: userId,
-        conversation_id: conversationId,
+        createdAt
+      }),
+      MongoConversationMessageMapper.toPersistence({
+        userId,
+        conversationId,
         role: 'assistant',
         content: assistantMessage,
-        created_at: new Date(createdAt.getTime() + 1)
-      }
+        createdAt: new Date(createdAt.getTime() + 1)
+      })
     ]);
   }
 }

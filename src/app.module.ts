@@ -11,6 +11,7 @@ import { JournalModule } from './modules/journal.module';
 import { MemoryModule } from './modules/memory.module';
 import { MongodbModule } from './modules/mongodb.module';
 import { PatternAnalysisModule } from './modules/pattern-analysis.module';
+import { ProfileModule } from './modules/profile.module';
 import { RiskAssessmentModule } from './modules/risk-assessment.module';
 import { SafetyModule } from './modules/safety.module';
 import { SummaryModule } from './modules/summary.module';
@@ -30,6 +31,7 @@ import { UsersModule } from './modules/users.module';
     UsersModule,
     AuthModule,
     ConversationModule,
+    ProfileModule,
     MemoryModule,
     CheckInModule,
     JournalModule,

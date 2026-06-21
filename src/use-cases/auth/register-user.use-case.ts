@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { EventDispatcher } from '../../domain/core/event-dispatcher';
-import { User, UserGender } from '../../domain/users/entities/user.entity';
+import { User } from '../../domain/users/entities/user.entity';
 import { UserRepository } from '../../domain/users/repositories/user.repository';
 import { Email } from '../../domain/users/value-objects/email.vo';
 import { Password } from '../../domain/users/value-objects/password.vo';
@@ -9,14 +9,15 @@ import { JwtTokenService } from '../../shared/services/jwt-token.service';
 import { PasswordHashService } from '../../shared/services/password-hash.service';
 import { UseCase } from '../use-case.interface';
 import { AuthResponse } from './auth-response';
+import { createDefaultUserProfileSnapshot } from '../profile/user-profile-snapshot.utils';
+import { UserSex } from '../../domain/users/entities/user-profile.types';
 
 export interface RegisterUserInput {
   name: string;
   email: string;
   password: string;
-  birthDate?: string;
-  gender?: string;
   phone?: string;
+  sex?: UserSex;
   timezone?: string;
   acceptedTerms: boolean;
 }
@@ -50,29 +51,21 @@ export class RegisterUserUseCase implements UseCase<RegisterUserInput, AuthRespo
       name: new UserName(input.name),
       email,
       passwordHash,
-      birthDate: input.birthDate ? this.parseDate(input.birthDate, 'birthDate') : undefined,
-      gender: input.gender as UserGender | undefined,
       phone: input.phone,
       timezone: input.timezone,
       acceptedTermsAt
     });
+
+    const profile = createDefaultUserProfileSnapshot({ sex: input.sex });
+    user.updateProfile(profile);
 
     await this.userRepository.save(user);
     await this.eventDispatcher.dispatch(user.pullDomainEvents());
 
     return {
       user: user.toJson(),
+      profile,
       accessToken: await this.jwtTokenService.signUser(user)
     };
-  }
-
-  private parseDate(value: string, field: string): Date {
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      throw new BadRequestException(`${field} must be a valid date`);
-    }
-
-    return date;
   }
 }

@@ -6,7 +6,7 @@ import {
   ChatAgentResponse
 } from '../../use-cases/conversation/chat-agent.port';
 import {
-  buildChatSystemInstruction,
+  buildChatMessages,
   CHAT_RESPONSE_SCHEMA,
   parseChatAgentResponse
 } from '../chat/chat-agent-support';
@@ -69,21 +69,17 @@ export class GeminiChatAgent implements ChatAgent {
 
     const startedAt = Date.now();
     this.logger.debug(`Sending chat request model=${model} timeoutMs=${timeoutMs}`);
+    const chatMessages = buildChatMessages(request);
+    const contentsMessages = chatMessages.slice(1).map((message) => ({
+      role: message.role === 'assistant' ? ('model' as const) : ('user' as const),
+      parts: [{ text: message.content }]
+    }));
 
     const payload: GeminiGenerateContentRequest = {
       systemInstruction: {
-        parts: [{ text: buildChatSystemInstruction(request) }]
+        parts: [{ text: chatMessages[0].content }]
       },
-      contents: [
-        ...request.context.recentMessages.map((message) => ({
-          role: message.role === 'assistant' ? ('model' as const) : ('user' as const),
-          parts: [{ text: message.content }]
-        })),
-        {
-          role: 'user',
-          parts: [{ text: request.message }]
-        }
-      ],
+      contents: contentsMessages,
       generationConfig: {
         maxOutputTokens: 1200,
         responseFormat: {

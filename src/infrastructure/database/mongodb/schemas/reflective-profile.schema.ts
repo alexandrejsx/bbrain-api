@@ -19,6 +19,9 @@ export class ReflectiveProfileMongo {
   preferred_tone?: string;
 
   @Prop({ type: [String], required: true, default: [] })
+  analysis_goals: string[];
+
+  @Prop({ type: [String], required: true, default: [] })
   recurring_themes: string[];
 
   @Prop({ type: [String], required: true, default: [] })
@@ -35,6 +38,15 @@ export class ReflectiveProfileMongo {
 
   @Prop({ type: [String], required: true, default: [] })
   boundaries: string[];
+
+  @Prop({ type: [String], required: true, default: [] })
+  reported_formal_diagnoses: string[];
+
+  @Prop({ type: String, maxlength: 180, trim: true })
+  reported_medication?: string;
+
+  @Prop({ type: String, maxlength: 260, trim: true })
+  professional_support?: string;
 
   @Prop({ type: String, maxlength: 500, trim: true })
   current_context_summary?: string;

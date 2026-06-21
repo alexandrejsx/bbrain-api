@@ -1,3 +1,5 @@
+import { ReflectiveProfile } from '../../domain/conversation/entities/reflective-profile.entity';
+
 export type AIContextMessageRole = 'user' | 'assistant';
 
 export interface AIContextMessage {
@@ -5,9 +7,11 @@ export interface AIContextMessage {
   content: string;
 }
 
+export interface AIUserIdentityContext {
+  displayName: string;
+}
+
 export interface AIUserProfileSummary {
-  preferredName?: string;
-  preferredTone?: string;
   goals?: string[];
   routineSummary?: string;
   sleepSummary?: string;
@@ -21,8 +25,15 @@ export interface AIUserProfileSummary {
   professionalSupport?: string;
 }
 
+export interface AIConversationAdaptation {
+  preferredTone?: string;
+  instructions: string[];
+}
+
 export interface AIContext {
+  userIdentityContext?: AIUserIdentityContext;
   userProfileSummary: AIUserProfileSummary;
+  conversationAdaptation?: AIConversationAdaptation;
   conversationSummary?: string;
   recentMessages: AIContextMessage[];
 }
@@ -32,4 +43,3 @@ export interface AIContextBuildResult {
   context: AIContext;
   sourceProfile?: ReflectiveProfile;
 }
-import { ReflectiveProfile } from '../../domain/conversation/entities/reflective-profile.entity';

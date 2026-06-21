@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
 import { AuthController } from '../controllers/auth.controller';
+import { ReflectiveProfileRepository } from '../domain/conversation/repositories/reflective-profile.repository';
 import { EventDispatcherAdapter } from '../domain/events/event-dispatcher.adapter';
 import { UserRepository } from '../domain/users/repositories/user.repository';
 import { JwtTokenService } from '../shared/services/jwt-token.service';
@@ -10,13 +11,15 @@ import { LoginUserUseCase } from '../use-cases/auth/login-user.use-case';
 import { RegisterUserUseCase } from '../use-cases/auth/register-user.use-case';
 import { JwtAuthGuard } from '../infrastructure/http/guards/jwt-auth.guard';
 import { EventsModule } from './events.module';
-import { EVENT_DISPATCHER, USERS_REPOSITORY } from './tokens';
+import { EVENT_DISPATCHER, REFLECTIVE_PROFILES_REPOSITORY, USERS_REPOSITORY } from './tokens';
 import { UsersModule } from './users.module';
+import { AIContextModule } from './ai-context/ai-context.module';
 
 @Module({
   imports: [
     UsersModule,
     EventsModule,
+    AIContextModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService): JwtModuleOptions => {
@@ -62,18 +65,26 @@ import { UsersModule } from './users.module';
       provide: LoginUserUseCase,
       useFactory: (
         userRepository: UserRepository,
+        reflectiveProfileRepository: ReflectiveProfileRepository,
         passwordHashService: PasswordHashService,
         jwtTokenService: JwtTokenService,
         eventDispatcher: EventDispatcherAdapter
       ) => {
         return new LoginUserUseCase(
           userRepository,
+          reflectiveProfileRepository,
           passwordHashService,
           jwtTokenService,
           eventDispatcher
         );
       },
-      inject: [USERS_REPOSITORY, PasswordHashService, JwtTokenService, EVENT_DISPATCHER]
+      inject: [
+        USERS_REPOSITORY,
+        REFLECTIVE_PROFILES_REPOSITORY,
+        PasswordHashService,
+        JwtTokenService,
+        EVENT_DISPATCHER
+      ]
     }
   ],
   exports: [JwtModule, RegisterUserUseCase, LoginUserUseCase, JwtAuthGuard]

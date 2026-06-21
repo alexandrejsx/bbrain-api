@@ -263,6 +263,29 @@ Respeita escopo?
 Evita salvar conteúdo indevido no perfil?`
 ].join('\n\n');
 
+export const conversationStylePromptAdaptations: Record<string, string[]> = {
+  calm: [
+    'usar ritmo calmo, gentil e sem pressa',
+    'priorizar acolhimento antes de orientar',
+    'evitar tom brusco ou excessivamente objetivo'
+  ],
+  direct: [
+    'ser direto e objetivo sem perder acolhimento',
+    'usar frases claras e práticas',
+    'evitar respostas longas quando uma orientação breve bastar'
+  ],
+  reflective: [
+    'favorecer reflexão com uma pergunta principal por resposta',
+    'ajudar o usuário a nomear padrões sem concluir por ele',
+    'evitar transformar reflexão em interrogatório'
+  ],
+  practical: [
+    'oferecer pequenos próximos passos aplicáveis',
+    'usar sugestões simples e concretas',
+    'manter reflexão suficiente para preservar autonomia'
+  ]
+};
+
 export const promptRegistry: Record<PromptKey, PromptDefinition> = {
   companion: {
     key: 'companion',

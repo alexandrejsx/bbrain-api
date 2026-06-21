@@ -48,4 +48,28 @@ describe('ReflectiveProfile', () => {
       lastInteractionAt: '2026-01-03T00:00:00.000Z'
     });
   });
+
+  it('configures setup information separately from reflective updates', () => {
+    const profile = ReflectiveProfile.create('user-id');
+
+    profile.configureFromSetup(
+      {
+        preferredTone: 'practical',
+        analysisGoals: ['Melhorar rotina', 'Melhorar rotina', ' Sono '],
+        reportedFormalDiagnoses: ['TDAH'],
+        reportedMedication: 'Medicação com acompanhamento profissional: sim.',
+        professionalSupport: 'Terapia atualmente: sim'
+      },
+      new Date('2026-01-04T00:00:00.000Z')
+    );
+
+    expect(profile.toJson()).toMatchObject({
+      preferredTone: 'practical',
+      analysisGoals: ['Melhorar rotina', 'Sono'],
+      reportedFormalDiagnoses: ['TDAH'],
+      reportedMedication: 'Medicação com acompanhamento profissional: sim.',
+      professionalSupport: 'Terapia atualmente: sim',
+      updatedAt: '2026-01-04T00:00:00.000Z'
+    });
+  });
 });

@@ -6,7 +6,7 @@ import {
   ChatAgentResponse
 } from '../../use-cases/conversation/chat-agent.port';
 import {
-  buildChatSystemInstruction,
+  buildChatMessages,
   CHAT_RESPONSE_SCHEMA,
   parseChatAgentResponse
 } from '../chat/chat-agent-support';
@@ -76,12 +76,17 @@ export class OpenAiChatAgent implements ChatAgent {
 
     const startedAt = Date.now();
     this.logger.debug(`Sending chat request model=${model}`);
+    const chatMessages = buildChatMessages(request);
+    const chatInput = chatMessages.slice(1).map(({ role, content }) => ({
+      role: role === 'assistant' ? ('assistant' as const) : ('user' as const),
+      content
+    }));
 
     const payload: OpenAiResponsesRequest = {
       model,
       store: false,
-      instructions: buildChatSystemInstruction(request),
-      input: [...request.context.recentMessages, { role: 'user', content: request.message }],
+      instructions: chatMessages[0].content,
+      input: chatInput,
       max_output_tokens: 1200,
       text: {
         format: {

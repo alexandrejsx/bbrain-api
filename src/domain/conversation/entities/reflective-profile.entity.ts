@@ -4,12 +4,16 @@ import { Uuid } from '../../shared/uuid.vo';
 export interface ReflectiveProfileProps {
   userId: string;
   preferredTone?: string;
+  analysisGoals: string[];
   recurringThemes: string[];
   emotionalPatterns: string[];
   routineNotes: string[];
   helpfulStrategies: string[];
   unhelpfulStrategies: string[];
   boundaries: string[];
+  reportedFormalDiagnoses: string[];
+  reportedMedication?: string;
+  professionalSupport?: string;
   currentContextSummary?: string;
   lastInteractionAt?: Date;
   createdAt: Date;
@@ -24,6 +28,14 @@ export interface ReflectiveProfileUpdate {
   helpfulStrategiesToAdd?: string[];
   unhelpfulStrategiesToAdd?: string[];
   boundariesToAdd?: string[];
+}
+
+export interface ReflectiveProfileSetup {
+  preferredTone?: string;
+  analysisGoals?: string[];
+  reportedFormalDiagnoses?: string[];
+  reportedMedication?: string;
+  professionalSupport?: string;
 }
 
 interface ReflectiveProfileCollections {
@@ -55,6 +67,18 @@ const mergeUnique = (current: string[], additions?: string[]): string[] => {
   return [...values.values()];
 };
 
+const cleanOptionalText = (value?: string, maxLength?: number): string | undefined => {
+  const cleaned = value?.trim();
+  if (!cleaned) return undefined;
+  return maxLength ? cleaned.slice(0, maxLength) : cleaned;
+};
+
+const cleanTextList = (values?: string[], limit = 12): string[] =>
+  [...new Map((values ?? []).map((value) => [value.trim().toLocaleLowerCase(), value.trim()]))]
+    .map(([, value]) => value)
+    .filter(Boolean)
+    .slice(0, limit);
+
 const mergeCollections = (
   current: ReflectiveProfileCollections,
   update: ReflectiveProfileUpdate
@@ -81,11 +105,13 @@ export class ReflectiveProfile extends Entity<ReflectiveProfileProps> {
       {
         userId,
         recurringThemes: [],
+        analysisGoals: [],
         emotionalPatterns: [],
         routineNotes: [],
         helpfulStrategies: [],
         unhelpfulStrategies: [],
         boundaries: [],
+        reportedFormalDiagnoses: [],
         createdAt: now,
         updatedAt: now
       },
@@ -111,17 +137,30 @@ export class ReflectiveProfile extends Entity<ReflectiveProfileProps> {
     this.registerInteraction(at);
   }
 
+  configureFromSetup(setup: ReflectiveProfileSetup, at = new Date()): void {
+    this.props.preferredTone = cleanOptionalText(setup.preferredTone, 80);
+    this.props.analysisGoals = cleanTextList(setup.analysisGoals);
+    this.props.reportedFormalDiagnoses = cleanTextList(setup.reportedFormalDiagnoses, 6);
+    this.props.reportedMedication = cleanOptionalText(setup.reportedMedication, 180);
+    this.props.professionalSupport = cleanOptionalText(setup.professionalSupport, 260);
+    this.props.updatedAt = at;
+  }
+
   toJson() {
     return {
       id: this.id.value,
       userId: this.props.userId,
       preferredTone: this.props.preferredTone,
+      analysisGoals: [...this.props.analysisGoals],
       recurringThemes: [...this.props.recurringThemes],
       emotionalPatterns: [...this.props.emotionalPatterns],
       routineNotes: [...this.props.routineNotes],
       helpfulStrategies: [...this.props.helpfulStrategies],
       unhelpfulStrategies: [...this.props.unhelpfulStrategies],
       boundaries: [...this.props.boundaries],
+      reportedFormalDiagnoses: [...this.props.reportedFormalDiagnoses],
+      reportedMedication: this.props.reportedMedication,
+      professionalSupport: this.props.professionalSupport,
       currentContextSummary: this.props.currentContextSummary,
       lastInteractionAt: this.props.lastInteractionAt?.toISOString(),
       createdAt: this.props.createdAt.toISOString(),

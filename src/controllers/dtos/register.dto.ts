@@ -4,8 +4,10 @@ import {
   IsEnum,
   IsOptional,
   IsString,
+  MaxLength,
   MinLength
 } from 'class-validator';
+import { PlanType } from '../../domain/plans/plan-definition';
 import { UserSex } from '../../domain/users/entities/user-profile.types';
 
 export class RegisterDto {
@@ -21,6 +23,7 @@ export class RegisterDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(32)
   phone?: string;
 
   @IsOptional()
@@ -30,6 +33,10 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   timezone?: string;
+
+  @IsOptional()
+  @IsEnum(PlanType)
+  plan?: PlanType;
 
   @IsBoolean()
   acceptedTerms: boolean;

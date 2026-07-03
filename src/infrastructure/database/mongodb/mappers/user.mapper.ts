@@ -3,6 +3,13 @@ import type { UserProfileSnapshot } from '../../../../domain/users/entities/user
 import { Email } from '../../../../domain/users/value-objects/email.vo';
 import { UserName } from '../../../../domain/users/value-objects/user-name.vo';
 import { Uuid } from '../../../../domain/shared/uuid.vo';
+import {
+  DEFAULT_PLAN,
+  normalizePaymentProviderType,
+  normalizePlanType,
+  isSubscriptionStatus,
+  SubscriptionStatus
+} from '../../../../domain/plans/plan-definition';
 import { UserDocument, UserMongo, UserProfileMongo } from '../schemas/user.schema';
 
 function toProfilePersistence(profile?: UserProfileSnapshot): UserProfileMongo | undefined {
@@ -99,28 +106,54 @@ export class MongoUserMapper {
       email: user.email.value,
       password_hash: user.passwordHash,
       phone: user.phone,
+      password_reset_code_hash: user.passwordResetCodeHash,
+      password_reset_code_expires_at: user.passwordResetCodeExpiresAt,
       timezone: user.timezone,
+      plan: user.plan,
+      billing_provider: user.billingProvider,
+      stripe_customer_id: user.stripeCustomerId,
+      asaas_customer_id: user.asaasCustomerId,
+      billing_status: user.billingStatus,
+      plan_access_until: user.planAccessUntil,
+      current_subscription_id: user.currentSubscriptionId,
       profile: toProfilePersistence(user.profile),
       accepted_terms_at: user.acceptedTermsAt,
       created_at: user.createdAt,
       updated_at: user.updatedAt,
-      last_login_at: user.lastLoginAt
+      last_login_at: user.lastLoginAt,
+      account_deactivated_at: user.accountDeactivatedAt,
+      account_scheduled_deletion_at: user.accountScheduledDeletionAt
     };
   }
 
   static toDomain(raw: UserDocument | UserMongo): User {
+    const legacyRaw = raw as UserMongo & { woovi_customer_id?: string };
+
     return User.create(
       {
         name: new UserName(raw.name),
         email: new Email(raw.email),
         passwordHash: raw.password_hash,
         phone: raw.phone,
+        passwordResetCodeHash: raw.password_reset_code_hash,
+        passwordResetCodeExpiresAt: raw.password_reset_code_expires_at,
         timezone: raw.timezone,
+        plan: normalizePlanType(raw.plan) ?? DEFAULT_PLAN,
+        billingProvider: normalizePaymentProviderType(raw.billing_provider),
+        stripeCustomerId: raw.stripe_customer_id,
+        asaasCustomerId: raw.asaas_customer_id ?? legacyRaw.woovi_customer_id,
+        billingStatus: isSubscriptionStatus(raw.billing_status)
+          ? raw.billing_status
+          : SubscriptionStatus.NONE,
+        planAccessUntil: raw.plan_access_until,
+        currentSubscriptionId: raw.current_subscription_id,
         profile: toProfileDomain(raw.profile),
         acceptedTermsAt: raw.accepted_terms_at,
         createdAt: raw.created_at,
         updatedAt: raw.updated_at,
-        lastLoginAt: raw.last_login_at
+        lastLoginAt: raw.last_login_at,
+        accountDeactivatedAt: raw.account_deactivated_at,
+        accountScheduledDeletionAt: raw.account_scheduled_deletion_at
       },
       new Uuid(raw._id)
     );

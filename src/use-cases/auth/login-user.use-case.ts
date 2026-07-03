@@ -8,6 +8,7 @@ import { PasswordHashService } from '../../shared/services/password-hash.service
 import { UseCase } from '../use-case.interface';
 import { AuthResponse } from './auth-response';
 import { resolveUserProfileSnapshot } from '../profile/user-profile-snapshot.utils';
+import { AccountLifecycleService } from './account-lifecycle.service';
 
 export interface LoginUserInput {
   email: string;
@@ -21,7 +22,8 @@ export class LoginUserUseCase implements UseCase<LoginUserInput, AuthResponse> {
     private readonly reflectiveProfileRepository: ReflectiveProfileRepository,
     private readonly passwordHashService: PasswordHashService,
     private readonly jwtTokenService: JwtTokenService,
-    private readonly eventDispatcher: EventDispatcher
+    private readonly eventDispatcher: EventDispatcher,
+    private readonly accountLifecycleService: AccountLifecycleService
   ) {}
 
   async execute(input: LoginUserInput): Promise<AuthResponse> {
@@ -32,6 +34,11 @@ export class LoginUserUseCase implements UseCase<LoginUserInput, AuthResponse> {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (user.isDeletionDue()) {
+      await this.accountLifecycleService.purgeUserAccount(user.id.value);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     const passwordMatches = await this.passwordHashService.compare(
       input.password,
       user.passwordHash
@@ -39,6 +46,10 @@ export class LoginUserUseCase implements UseCase<LoginUserInput, AuthResponse> {
 
     if (!passwordMatches) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.canBeReactivated()) {
+      user.reactivate();
     }
 
     user.markLoggedIn();

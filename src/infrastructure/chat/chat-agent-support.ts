@@ -70,6 +70,9 @@ const stripMarkdownFence = (value: string): string =>
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/, '');
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
 const removeTrailingCommas = (value: string): string => {
   let result = '';
   let insideString = false;
@@ -116,18 +119,127 @@ const removeTrailingCommas = (value: string): string => {
   return result;
 };
 
-const parseStructuredJson = (outputText: string, providerName: string): Record<string, unknown> => {
-  const normalized = stripMarkdownFence(outputText);
+const parseJsonObject = (value: string): Record<string, unknown> | undefined => {
+  const normalized = value.trim();
+
+  if (!normalized) {
+    return undefined;
+  }
 
   try {
-    return JSON.parse(normalized) as Record<string, unknown>;
-  } catch (initialError) {
+    const parsed = JSON.parse(normalized);
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
     const repaired = removeTrailingCommas(normalized);
 
-    if (repaired !== normalized) {
-      return JSON.parse(repaired) as Record<string, unknown>;
+    if (repaired === normalized) {
+      return undefined;
     }
 
+    try {
+      const parsed = JSON.parse(repaired);
+      return isRecord(parsed) ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+};
+
+const extractMarkdownFenceContents = (value: string): string[] =>
+  Array.from(value.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi), (match) => match[1].trim()).filter(
+    Boolean
+  );
+
+const extractJsonObjectCandidates = (value: string): string[] => {
+  const candidates: string[] = [];
+
+  for (let start = 0; start < value.length; start += 1) {
+    if (value[start] !== '{') {
+      continue;
+    }
+
+    let depth = 0;
+    let insideString = false;
+    let escaped = false;
+
+    for (let end = start; end < value.length; end += 1) {
+      const character = value[end];
+
+      if (insideString) {
+        if (escaped) {
+          escaped = false;
+        } else if (character === '\\') {
+          escaped = true;
+        } else if (character === '"') {
+          insideString = false;
+        }
+
+        continue;
+      }
+
+      if (character === '"') {
+        insideString = true;
+        continue;
+      }
+
+      if (character === '{') {
+        depth += 1;
+      } else if (character === '}') {
+        depth -= 1;
+
+        if (depth === 0) {
+          candidates.push(value.slice(start, end + 1));
+          break;
+        }
+      }
+    }
+  }
+
+  return candidates;
+};
+
+const looksLikeStructuredChatResponse = (value: Record<string, unknown>): boolean =>
+  'reply' in value && 'riskLevel' in value && 'scopeStatus' in value && 'profileUpdate' in value;
+
+const parseStructuredJson = (outputText: string, providerName: string): Record<string, unknown> => {
+  const normalized = stripMarkdownFence(outputText);
+  const directParsed = parseJsonObject(normalized);
+
+  if (directParsed) {
+    return directParsed;
+  }
+
+  const candidates = [
+    ...extractMarkdownFenceContents(outputText),
+    ...extractJsonObjectCandidates(outputText)
+  ];
+  const uniqueCandidates = [...new Set(candidates)];
+  let fallbackCandidate: Record<string, unknown> | undefined;
+
+  for (const candidate of uniqueCandidates) {
+    const parsedCandidate = parseJsonObject(candidate);
+
+    if (!parsedCandidate) {
+      continue;
+    }
+
+    if (looksLikeStructuredChatResponse(parsedCandidate)) {
+      return parsedCandidate;
+    }
+
+    fallbackCandidate ??= parsedCandidate;
+  }
+
+  if (fallbackCandidate) {
+    return fallbackCandidate;
+  }
+
+  try {
+    JSON.parse(normalized);
+    throw new Error(
+      `${providerName} returned malformed JSON: top-level JSON value is not an object`
+    );
+  } catch (initialError) {
     const detail = initialError instanceof Error ? initialError.message : 'unknown JSON error';
     throw new Error(`${providerName} returned malformed JSON: ${detail}`, {
       cause: initialError
@@ -228,7 +340,7 @@ export function buildChatMessages(request: ChatAgentRequest): ChatMessage[] {
 export function parseChatAgentResponse(
   outputText: string,
   providerName: string
-): ChatAgentResponse {
+): Omit<ChatAgentResponse, 'usage'> {
   const parsed = parseStructuredJson(outputText, providerName);
   const riskLevel = parsed.riskLevel;
   const scopeStatus = parsed.scopeStatus;

@@ -1,5 +1,14 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Inject,
+  Injectable,
+  UnauthorizedException
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { TokenExpiredError } from 'jsonwebtoken';
+import { UserRepository } from '../../../domain/users/repositories/user.repository';
+import { USERS_REPOSITORY } from '../../../modules/tokens';
 
 export interface AuthenticatedRequest {
   headers: Record<string, string | string[] | undefined>;
@@ -14,7 +23,10 @@ interface JwtPayload {
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    @Inject(USERS_REPOSITORY) private readonly userRepository: UserRepository
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
@@ -35,9 +47,30 @@ export class JwtAuthGuard implements CanActivate {
       request.user = {
         id: payload.sub
       };
+
+      const user = await this.userRepository.findById(payload.sub);
+
+      if (!user || user.hasScheduledDeletion()) {
+        throw new UnauthorizedException('Account is unavailable');
+      }
+
       return true;
-    } catch {
-      throw new UnauthorizedException('Invalid or expired access token');
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+
+      if (error instanceof TokenExpiredError) {
+        throw new UnauthorizedException({
+          message: 'Access token expired',
+          code: 'ACCESS_TOKEN_EXPIRED'
+        });
+      }
+
+      throw new UnauthorizedException({
+        message: 'Invalid access token',
+        code: 'INVALID_ACCESS_TOKEN'
+      });
     }
   }
 }

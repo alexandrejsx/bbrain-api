@@ -45,4 +45,8 @@ export class MongoAIContextMessageRepository implements AIContextMessageReposito
       })
     ]);
   }
+
+  async deleteByUserId(userId: string): Promise<void> {
+    await this.baseRepository.deleteMany({ user_id: userId });
+  }
 }

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import parsePhoneNumberFromString from 'libphonenumber-js';
 import { EventDispatcher } from '../../domain/core/event-dispatcher';
 import { User } from '../../domain/users/entities/user.entity';
 import { UserRepository } from '../../domain/users/repositories/user.repository';
@@ -11,6 +12,7 @@ import { UseCase } from '../use-case.interface';
 import { AuthResponse } from './auth-response';
 import { createDefaultUserProfileSnapshot } from '../profile/user-profile-snapshot.utils';
 import { UserSex } from '../../domain/users/entities/user-profile.types';
+import { PlanType } from '../../domain/plans/plan-definition';
 
 export interface RegisterUserInput {
   name: string;
@@ -19,6 +21,7 @@ export interface RegisterUserInput {
   phone?: string;
   sex?: UserSex;
   timezone?: string;
+  plan?: PlanType;
   acceptedTerms: boolean;
 }
 
@@ -46,13 +49,19 @@ export class RegisterUserUseCase implements UseCase<RegisterUserInput, AuthRespo
     const password = new Password(input.password);
     const passwordHash = await this.passwordHashService.hash(password.value);
     const acceptedTermsAt = new Date();
+    const phone = normalizeInternationalPhoneNumber(input.phone);
+
+    if (input.plan !== undefined && input.plan !== PlanType.FREE) {
+      throw new BadRequestException('Planos pagos devem ser ativados pelo checkout.');
+    }
 
     const user = User.register({
       name: new UserName(input.name),
       email,
       passwordHash,
-      phone: input.phone,
+      phone,
       timezone: input.timezone,
+      plan: input.plan,
       acceptedTermsAt
     });
 
@@ -68,4 +77,20 @@ export class RegisterUserUseCase implements UseCase<RegisterUserInput, AuthRespo
       accessToken: await this.jwtTokenService.signUser(user)
     };
   }
+}
+
+function normalizeInternationalPhoneNumber(value?: string): string | undefined {
+  if (!value?.trim()) {
+    return undefined;
+  }
+
+  const parsedPhoneNumber = parsePhoneNumberFromString(value.trim(), {
+    extract: false
+  });
+
+  if (!parsedPhoneNumber?.isValid()) {
+    throw new BadRequestException('Informe um telefone internacional valido.');
+  }
+
+  return parsedPhoneNumber.number;
 }

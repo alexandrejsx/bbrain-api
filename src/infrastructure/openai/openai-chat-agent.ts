@@ -11,6 +11,11 @@ import {
   parseChatAgentResponse
 } from '../chat/chat-agent-support';
 import { describeProviderError, describeProviderHttpError } from '../chat/ai-provider-error';
+import {
+  estimateLlmUsageFromText,
+  LlmUsage,
+  normalizeLlmUsage
+} from '../../domain/usage/value-objects/llm-usage';
 
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 
@@ -26,6 +31,13 @@ interface OpenAiOutputItem {
 interface OpenAiResponseBody {
   output_text?: string;
   output?: OpenAiOutputItem[];
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+  };
 }
 
 interface OpenAiResponsesRequest {
@@ -55,6 +67,20 @@ const extractOutputText = (body: OpenAiResponseBody): string | undefined => {
   return body.output
     ?.flatMap((item) => item.content ?? [])
     .find((content) => content.type === 'output_text' && typeof content.text === 'string')?.text;
+};
+
+const mapOpenAiUsage = (body: OpenAiResponseBody): LlmUsage | undefined => {
+  const usage = body.usage;
+
+  if (!usage) {
+    return undefined;
+  }
+
+  return normalizeLlmUsage({
+    inputTokens: usage.input_tokens ?? usage.prompt_tokens ?? 0,
+    outputTokens: usage.output_tokens ?? usage.completion_tokens ?? 0,
+    totalTokens: usage.total_tokens ?? 0
+  });
 };
 
 @Injectable()
@@ -121,10 +147,19 @@ export class OpenAiChatAgent implements ChatAgent {
       }
 
       const result = parseChatAgentResponse(outputText, 'OpenAI');
+      const usage =
+        mapOpenAiUsage(body) ??
+        estimateLlmUsageFromText(
+          chatMessages.map((message) => message.content).join('\n'),
+          outputText
+        );
       this.logger.debug(
         `Chat request completed model=${model} durationMs=${Date.now() - startedAt}`
       );
-      return result;
+      return {
+        ...result,
+        usage
+      };
     } catch (error) {
       this.logger.error(
         `Chat request failed model=${model} durationMs=${Date.now() - startedAt} ${describeProviderError(error)}`,

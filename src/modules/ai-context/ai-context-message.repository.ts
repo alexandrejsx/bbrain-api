@@ -9,4 +9,5 @@ export interface AIContextMessageRepository {
     assistantMessage: string,
     createdAt: Date
   ): Promise<void>;
+  deleteByUserId(userId: string): Promise<void>;
 }

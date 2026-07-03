@@ -12,14 +12,17 @@ import { AIContextModule } from './ai-context/ai-context.module';
 import { AIContextMessageRepository } from './ai-context/ai-context-message.repository';
 import { AIContextService } from './ai-context/ai-context.service';
 import { AuthModule } from './auth.module';
+import { PlansModule } from './plans.module';
+import { UsageService } from '../domain/usage/services/usage.service';
 import {
   AI_CONTEXT_MESSAGES_REPOSITORY,
   CHAT_AGENT,
   REFLECTIVE_PROFILES_REPOSITORY
 } from './tokens';
+import { UsersModule } from './users.module';
 
 @Module({
-  imports: [AuthModule, AIContextModule],
+  imports: [AuthModule, AIContextModule, UsersModule, PlansModule],
   controllers: [ChatController],
   providers: [
     ConversationScopePolicy,
@@ -43,7 +46,8 @@ import {
         scopePolicy: ConversationScopePolicy,
         aiContextService: AIContextService,
         profileUpdateService: ProfileUpdateService,
-        messageRepository: AIContextMessageRepository
+        messageRepository: AIContextMessageRepository,
+        usageService: UsageService
       ) =>
         new SendChatMessageUseCase(
           profileRepository,
@@ -51,7 +55,8 @@ import {
           scopePolicy,
           aiContextService,
           profileUpdateService,
-          messageRepository
+          messageRepository,
+          usageService
         ),
       inject: [
         REFLECTIVE_PROFILES_REPOSITORY,
@@ -59,7 +64,8 @@ import {
         ConversationScopePolicy,
         AIContextService,
         ProfileUpdateService,
-        AI_CONTEXT_MESSAGES_REPOSITORY
+        AI_CONTEXT_MESSAGES_REPOSITORY,
+        UsageService
       ]
     }
   ]

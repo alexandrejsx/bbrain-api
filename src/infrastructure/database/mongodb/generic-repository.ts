@@ -41,5 +41,7 @@ export interface IGenericRepository<T extends MongoDocument> {
     update: UpdateQuery<T>
   ): Promise<{ matchedCount: number; modifiedCount: number }>;
 
+  deleteMany(conditions: FilterQuery<T>): Promise<number>;
+
   delete(id: string): Promise<boolean>;
 }

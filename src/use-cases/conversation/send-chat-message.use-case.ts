@@ -3,6 +3,7 @@ import {
   ConversationScopePolicy,
   ConversationScopeStatus
 } from '../../domain/conversation/services/conversation-scope-policy.service';
+import { UsageLimitError, UsageService } from '../../domain/usage/services/usage.service';
 import { AIContextService } from '../../modules/ai-context/ai-context.service';
 import { AIContextMessageRepository } from '../../modules/ai-context/ai-context-message.repository';
 import { ChatAgent, ChatRiskLevel } from './chat-agent.port';
@@ -10,6 +11,20 @@ import { ProfileUpdateService } from './profile-update.service';
 
 const PROFILE_SETUP_REPLY =
   'Antes de continuarmos, quero conhecer um pouco melhor você para que o BBrain possa te acompanhar com mais cuidado. Vamos configurar seu perfil?';
+
+const LIMIT_CRISIS_REPLY =
+  'Sinto muito que você esteja passando por isso. Mesmo com o limite diário atingido, sua segurança vem primeiro: procure agora uma pessoa de confiança e não fique sozinho. Se houver risco imediato, vá para um lugar seguro e contate o serviço de emergência da sua região.';
+
+const HIGH_RISK_KEYWORDS = [
+  'suicid',
+  'me matar',
+  'tirar minha vida',
+  'nao quero viver',
+  'não quero viver',
+  'nao aguento mais viver',
+  'não aguento mais viver',
+  'me machucar'
+] as const;
 
 export interface SendChatMessageInput {
   userId: string;
@@ -37,7 +52,8 @@ export class SendChatMessageUseCase {
     private readonly scopePolicy: ConversationScopePolicy,
     private readonly aiContextService: AIContextService,
     private readonly profileUpdateService: ProfileUpdateService,
-    private readonly messageRepository: AIContextMessageRepository
+    private readonly messageRepository: AIContextMessageRepository,
+    private readonly usageService: UsageService
   ) {}
 
   async execute(input: SendChatMessageInput): Promise<SendChatMessageOutput> {
@@ -53,6 +69,20 @@ export class SendChatMessageUseCase {
 
     const profile = contextResult.sourceProfile;
     if (!profile) throw new Error('Configured reflective profile was not found');
+
+    try {
+      await this.usageService.assertCanSendMessage(input.userId, input.message);
+    } catch (error) {
+      if (error instanceof UsageLimitError && hasHighRiskSignal(input.message)) {
+        return {
+          reply: LIMIT_CRISIS_REPLY,
+          riskLevel: 'high',
+          scopeStatus: 'in_scope'
+        };
+      }
+
+      throw error;
+    }
 
     let agentResponse;
     try {
@@ -89,6 +119,7 @@ export class SendChatMessageUseCase {
     }
 
     await Promise.all(persistenceTasks);
+    await this.usageService.registerLlmUsage(input.userId, agentResponse.usage);
 
     return {
       reply,
@@ -96,4 +127,19 @@ export class SendChatMessageUseCase {
       scopeStatus: agentResponse.scopeStatus
     };
   }
+}
+
+function normalizeRiskText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function hasHighRiskSignal(message: string): boolean {
+  const normalizedMessage = normalizeRiskText(message);
+
+  return HIGH_RISK_KEYWORDS.some((keyword) =>
+    normalizedMessage.includes(normalizeRiskText(keyword))
+  );
 }

@@ -112,4 +112,9 @@ export class MongodbRepository<T extends MongoDocument> implements IGenericRepos
     const result = await this._model.findByIdAndDelete(id).exec();
     return result !== null;
   }
+
+  async deleteMany(conditions: FilterQuery<T>): Promise<number> {
+    const result = await this._model.deleteMany(conditions).exec();
+    return result.deletedCount ?? 0;
+  }
 }

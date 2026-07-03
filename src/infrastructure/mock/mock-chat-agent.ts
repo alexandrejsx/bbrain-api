@@ -4,6 +4,7 @@ import {
   ChatAgentRequest,
   ChatAgentResponse
 } from '../../use-cases/conversation/chat-agent.port';
+import { estimateLlmUsageFromText } from '../../domain/usage/value-objects/llm-usage';
 
 interface MockReplyRule {
   keywords: readonly string[];
@@ -78,12 +79,15 @@ export class MockChatAgent implements ChatAgent {
     const message = normalize(request.message);
 
     if (HIGH_RISK_KEYWORDS.some((keyword) => message.includes(keyword))) {
+      const reply =
+        'Sinto muito que você esteja passando por isso. Procure agora uma pessoa de confiança e não fique sozinho. Se houver risco imediato, vá para um lugar seguro e contate o serviço de emergência da sua região.';
+
       return Promise.resolve({
-        reply:
-          'Sinto muito que você esteja passando por isso. Procure agora uma pessoa de confiança e não fique sozinho. Se houver risco imediato, vá para um lugar seguro e contate o serviço de emergência da sua região.',
+        reply,
         riskLevel: 'high',
         scopeStatus: 'in_scope',
-        profileUpdate: { shouldUpdate: false }
+        profileUpdate: { shouldUpdate: false },
+        usage: estimateLlmUsageFromText(request.message, reply)
       });
     }
 
@@ -91,11 +95,14 @@ export class MockChatAgent implements ChatAgent {
       rule.keywords.some((keyword) => message.includes(keyword))
     );
 
+    const reply = matchedRule?.reply ?? selectGeneralReply(message);
+
     return Promise.resolve({
-      reply: matchedRule?.reply ?? selectGeneralReply(message),
+      reply,
       riskLevel: 'none',
       scopeStatus: 'in_scope',
-      profileUpdate: { shouldUpdate: false }
+      profileUpdate: { shouldUpdate: false },
+      usage: estimateLlmUsageFromText(request.message, reply)
     });
   }
 }

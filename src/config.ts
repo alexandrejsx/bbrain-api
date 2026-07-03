@@ -6,6 +6,16 @@ interface MongoDBConfig {
 interface AuthConfig {
   jwtSecret: string;
   jwtExpiresIn: string;
+  passwordResetCodeTtlMinutes: number;
+  accountDeletionGraceDays: number;
+  accountDeletionSweepIntervalMs: number;
+}
+
+interface EmailConfig {
+  provider: 'log' | 'resend';
+  fromEmail?: string;
+  fromName: string;
+  resendApiKey?: string;
 }
 
 interface BBrainModelConfig {
@@ -30,6 +40,31 @@ interface GeminiConfig {
 interface QueueConfig {
   provider: 'memory' | 'bullmq' | 'inngest';
   redisUrl?: string;
+}
+
+interface StripePriceConfig {
+  standardMonthlyBrl?: string;
+  standardYearlyBrl?: string;
+  proMonthlyBrl?: string;
+  proYearlyBrl?: string;
+  standardMonthlyUsd?: string;
+  standardYearlyUsd?: string;
+  proMonthlyUsd?: string;
+  proYearlyUsd?: string;
+}
+
+interface BillingConfig {
+  stripeSecretKey?: string;
+  stripeWebhookSecret?: string;
+  frontendUrl: string;
+  checkoutSuccessUrl: string;
+  checkoutCancelUrl: string;
+  stripePortalReturnUrl: string;
+  asaasApiUrl: string;
+  asaasApiKey?: string;
+  asaasWebhookSecret?: string;
+  asaasWebhookUrl: string;
+  prices: StripePriceConfig;
 }
 
 interface StorageConfig {
@@ -65,9 +100,11 @@ interface AppConfig {
   cors: CorsConfig;
   mongoDb: MongoDBConfig;
   auth: AuthConfig;
+  email: EmailConfig;
   openAi: OpenAIConfig;
   gemini: GeminiConfig;
   queue: QueueConfig;
+  billing: BillingConfig;
   storage: StorageConfig;
   observability: ObservabilityConfig;
   agent: AgentConfig;
@@ -89,6 +126,10 @@ const parseQueueProvider = (value?: string): QueueConfig['provider'] => {
 
 const parseStorageType = (value?: string): StorageConfig['type'] => {
   return value === 's3' ? 's3' : 'local';
+};
+
+const parseEmailProvider = (value?: string): EmailConfig['provider'] => {
+  return value === 'resend' ? 'resend' : 'log';
 };
 
 const parseCorsOrigins = (value?: string): string[] => {
@@ -127,7 +168,18 @@ const config = (): AppConfig => ({
   },
   auth: {
     jwtSecret: process.env.JWT_SECRET || 'local-secret',
-    jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d'
+    jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    passwordResetCodeTtlMinutes: Number(process.env.PASSWORD_RESET_CODE_TTL_MINUTES || 15),
+    accountDeletionGraceDays: Number(process.env.ACCOUNT_DELETION_GRACE_DAYS || 7),
+    accountDeletionSweepIntervalMs: Number(
+      process.env.ACCOUNT_DELETION_SWEEP_INTERVAL_MS || 60 * 60 * 1000
+    )
+  },
+  email: {
+    provider: parseEmailProvider(process.env.EMAIL_PROVIDER),
+    fromEmail: process.env.EMAIL_FROM,
+    fromName: process.env.EMAIL_FROM_NAME || 'BBrain',
+    resendApiKey: process.env.RESEND_API_KEY
   },
   openAi: {
     apiKey: process.env.OPENAI_API_KEY || '',
@@ -142,6 +194,30 @@ const config = (): AppConfig => ({
   queue: {
     provider: parseQueueProvider(process.env.QUEUE_PROVIDER),
     redisUrl: process.env.REDIS_URL
+  },
+  billing: {
+    stripeSecretKey: process.env.STRIPE_SECRET_KEY,
+    stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+    checkoutSuccessUrl:
+      process.env.CHECKOUT_SUCCESS_URL || 'http://localhost:3000/checkout/sucesso',
+    checkoutCancelUrl:
+      process.env.CHECKOUT_CANCEL_URL || 'http://localhost:3000/checkout/cancelado',
+    stripePortalReturnUrl: process.env.STRIPE_PORTAL_RETURN_URL || 'http://localhost:3000/perfil',
+    asaasApiUrl: process.env.ASAAS_API_URL || 'https://api.asaas.com.br',
+    asaasApiKey: process.env.ASAAS_API_KEY,
+    asaasWebhookSecret: process.env.ASAAS_WEBHOOK_SECRET,
+    asaasWebhookUrl: process.env.ASAAS_WEBHOOK_URL || 'http://localhost:9090/webhooks/asaas',
+    prices: {
+      standardMonthlyBrl: process.env.STRIPE_PRICE_STANDARD_MONTHLY_BRL,
+      standardYearlyBrl: process.env.STRIPE_PRICE_STANDARD_YEARLY_BRL,
+      proMonthlyBrl: process.env.STRIPE_PRICE_PRO_MONTHLY_BRL,
+      proYearlyBrl: process.env.STRIPE_PRICE_PRO_YEARLY_BRL,
+      standardMonthlyUsd: process.env.STRIPE_PRICE_STANDARD_MONTHLY_USD,
+      standardYearlyUsd: process.env.STRIPE_PRICE_STANDARD_YEARLY_USD,
+      proMonthlyUsd: process.env.STRIPE_PRICE_PRO_MONTHLY_USD,
+      proYearlyUsd: process.env.STRIPE_PRICE_PRO_YEARLY_USD
+    }
   },
   storage: {
     type: parseStorageType(process.env.STORAGE_TYPE),

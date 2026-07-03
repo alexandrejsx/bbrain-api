@@ -231,7 +231,8 @@ Retornar sempre objeto estruturado conforme o schema da aplicação:
 reply
 riskLevel
 scopeStatus
-profileUpdate`,
+profileUpdate
+Sem texto antes do objeto, sem texto depois do objeto e sem usar bloco markdown.`,
 
   `OUTPUT_RULES:
 reply:

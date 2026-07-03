@@ -12,6 +12,7 @@ import {
   MaxLength,
   ValidateNested
 } from 'class-validator';
+import { PlanType } from '../../domain/plans/plan-definition';
 import { UserSex } from '../../domain/users/entities/user-profile.types';
 
 const communicationStyles = ['calm', 'direct', 'reflective', 'practical'] as const;
@@ -119,6 +120,15 @@ class PrivacySettingsDto {
 export class UpdateUserProfileDto {
   @IsBoolean()
   profileCompleted: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  phone?: string;
+
+  @IsOptional()
+  @IsEnum(PlanType)
+  plan?: PlanType;
 
   @IsObject()
   @ValidateNested()

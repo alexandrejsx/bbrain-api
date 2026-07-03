@@ -25,4 +25,8 @@ export class MongoReflectiveProfileRepository implements ReflectiveProfileReposi
 
     await this.baseRepository.add(persistence);
   }
+
+  async deleteByUserId(userId: string): Promise<void> {
+    await this.baseRepository.deleteMany({ user_id: userId });
+  }
 }

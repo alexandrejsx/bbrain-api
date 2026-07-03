@@ -1,15 +1,19 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import parsePhoneNumberFromString from 'libphonenumber-js';
 import { ReflectiveProfile } from '../../domain/conversation/entities/reflective-profile.entity';
 import { ReflectiveProfileRepository } from '../../domain/conversation/repositories/reflective-profile.repository';
 import { UserRepository } from '../../domain/users/repositories/user.repository';
 import type { PublicUser } from '../auth/auth-response';
 import type { UserProfileSnapshot } from '../../domain/users/entities/user-profile.types';
 import { normalizeUserProfileSnapshot } from '../profile/user-profile-snapshot.utils';
+import { PlanType } from '../../domain/plans/plan-definition';
 
 type YesNoPreferNotToSay = 'yes' | 'no' | 'prefer_not_to_answer';
 
 export interface UpdateUserProfileInput {
   userId: string;
+  phone?: string;
+  plan?: PlanType;
   profile: UserProfileSnapshot;
 }
 
@@ -42,6 +46,18 @@ export class UpdateUserProfileUseCase {
     const profile =
       (await this.profileRepository.findByUserId(input.userId)) ??
       ReflectiveProfile.create(input.userId);
+
+    if (input.phone !== undefined) {
+      user.updatePhone(normalizeInternationalPhoneNumber(input.phone), now);
+    }
+
+    if (input.plan !== undefined) {
+      if (input.plan !== PlanType.FREE) {
+        throw new BadRequestException('Planos pagos devem ser ativados pelo checkout.');
+      }
+
+      user.updatePlan(input.plan, now);
+    }
 
     user.updateProfile(profileSnapshot, now);
 
@@ -119,4 +135,20 @@ export class UpdateUserProfileUseCase {
     if (value === 'not_sure') return `${label}: não tem certeza`;
     return `${label}: ${yesNoLabels[value]}`;
   }
+}
+
+function normalizeInternationalPhoneNumber(value?: string): string | undefined {
+  if (!value?.trim()) {
+    return undefined;
+  }
+
+  const parsedPhoneNumber = parsePhoneNumberFromString(value.trim(), {
+    extract: false
+  });
+
+  if (!parsedPhoneNumber?.isValid()) {
+    throw new BadRequestException('Informe um telefone internacional valido.');
+  }
+
+  return parsedPhoneNumber.number;
 }

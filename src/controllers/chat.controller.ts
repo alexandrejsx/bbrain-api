@@ -1,12 +1,15 @@
 import {
   Body,
   Controller,
+  HttpException,
+  HttpStatus,
   Logger,
   Post,
   Req,
   ServiceUnavailableException,
   UseGuards
 } from '@nestjs/common';
+import { UsageLimitError } from '../domain/usage/services/usage.service';
 import { AuthenticatedRequest, JwtAuthGuard } from '../infrastructure/http/guards/jwt-auth.guard';
 import {
   ChatProviderUnavailableError,
@@ -34,6 +37,22 @@ export class ChatController {
         this.logger.warn('Chat provider unavailable; returning HTTP 503');
         throw new ServiceUnavailableException(
           'Não foi possível responder agora. Tente novamente em instantes.'
+        );
+      }
+
+      if (error instanceof UsageLimitError) {
+        const status =
+          error.code === 'USAGE_MESSAGE_LIMIT_REACHED' || error.code === 'USAGE_TOKEN_LIMIT_REACHED'
+            ? HttpStatus.TOO_MANY_REQUESTS
+            : HttpStatus.FORBIDDEN;
+
+        throw new HttpException(
+          {
+            code: error.code,
+            message: error.message,
+            details: error.details
+          },
+          status
         );
       }
 

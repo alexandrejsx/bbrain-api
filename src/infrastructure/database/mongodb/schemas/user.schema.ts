@@ -7,6 +7,11 @@ import type {
   YesNoPreferNotToSay
 } from '../../../../domain/users/entities/user-profile.types';
 import { UserSex as UserSexEnum } from '../../../../domain/users/entities/user-profile.types';
+import {
+  PaymentProviderType,
+  PlanType,
+  SubscriptionStatus
+} from '../../../../domain/plans/plan-definition';
 
 export interface UserProfileMongo {
   profile_completed: boolean;
@@ -102,8 +107,48 @@ export class UserMongo {
   @Prop({ type: String })
   phone?: string;
 
+  @Prop({ type: String })
+  password_reset_code_hash?: string;
+
+  @Prop({ type: Date })
+  password_reset_code_expires_at?: Date;
+
   @Prop({ type: String, required: true, default: 'America/Sao_Paulo' })
   timezone: string;
+
+  @Prop({
+    type: String,
+    required: true,
+    enum: [...Object.values(PlanType), 'premium'],
+    default: PlanType.FREE
+  })
+  plan: PlanType;
+
+  @Prop({ type: String, enum: Object.values(PaymentProviderType) })
+  billing_provider?: PaymentProviderType;
+
+  @Prop({ type: String })
+  stripe_customer_id?: string;
+
+  @Prop({ type: String })
+  asaas_customer_id?: string;
+
+  @Prop({ type: String })
+  woovi_customer_id?: string;
+
+  @Prop({
+    type: String,
+    required: true,
+    enum: Object.values(SubscriptionStatus),
+    default: SubscriptionStatus.NONE
+  })
+  billing_status: SubscriptionStatus;
+
+  @Prop({ type: Date })
+  plan_access_until?: Date;
+
+  @Prop({ type: String })
+  current_subscription_id?: string;
 
   @Prop(raw(userProfileSchemaDefinition))
   profile?: UserProfileMongo;
@@ -119,6 +164,12 @@ export class UserMongo {
 
   @Prop({ type: Date })
   last_login_at?: Date;
+
+  @Prop({ type: Date })
+  account_deactivated_at?: Date;
+
+  @Prop({ type: Date, index: true })
+  account_scheduled_deletion_at?: Date;
 }
 
 export type UserDocument = HydratedDocument<UserMongo>;

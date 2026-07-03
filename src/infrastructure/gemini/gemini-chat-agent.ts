@@ -11,6 +11,11 @@ import {
   parseChatAgentResponse
 } from '../chat/chat-agent-support';
 import { describeProviderError, describeProviderHttpError } from '../chat/ai-provider-error';
+import {
+  estimateLlmUsageFromText,
+  LlmUsage,
+  normalizeLlmUsage
+} from '../../domain/usage/value-objects/llm-usage';
 
 const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -47,7 +52,26 @@ interface GeminiGenerateContentResponse {
   promptFeedback?: {
     blockReason?: string;
   };
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
 }
+
+const mapGeminiUsage = (body: GeminiGenerateContentResponse): LlmUsage | undefined => {
+  const usage = body.usageMetadata;
+
+  if (!usage) {
+    return undefined;
+  }
+
+  return normalizeLlmUsage({
+    inputTokens: usage.promptTokenCount ?? 0,
+    outputTokens: usage.candidatesTokenCount ?? 0,
+    totalTokens: usage.totalTokenCount ?? 0
+  });
+};
 
 @Injectable()
 export class GeminiChatAgent implements ChatAgent {
@@ -119,7 +143,7 @@ export class GeminiChatAgent implements ChatAgent {
         );
       }
 
-      let result: ChatAgentResponse;
+      let result: Omit<ChatAgentResponse, 'usage'>;
 
       try {
         result = parseChatAgentResponse(outputText, 'Gemini');
@@ -130,10 +154,19 @@ export class GeminiChatAgent implements ChatAgent {
         throw error;
       }
 
+      const usage =
+        mapGeminiUsage(body) ??
+        estimateLlmUsageFromText(
+          chatMessages.map((message) => message.content).join('\n'),
+          outputText
+        );
       this.logger.debug(
         `Chat request completed model=${model} durationMs=${Date.now() - startedAt}`
       );
-      return result;
+      return {
+        ...result,
+        usage
+      };
     } catch (error) {
       this.logger.error(
         `Chat request failed model=${model} durationMs=${Date.now() - startedAt} ${describeProviderError(error)}`,

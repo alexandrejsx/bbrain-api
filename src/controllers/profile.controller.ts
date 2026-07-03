@@ -20,6 +20,8 @@ export class ProfileController {
 
     return this.updateUserProfileUseCase.execute({
       userId: request.user!.id,
+      phone: dto.phone,
+      plan: dto.plan,
       profile: {
         profileCompleted: dto.profileCompleted,
         basicInfo: {

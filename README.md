@@ -146,3 +146,18 @@ yarn start:local
 - `yarn docker:mongo:down`: para os containers locais do compose.
 - `yarn docker:mongo:logs`: acompanha os logs do MongoDB local.
 - `yarn format`: aplica Prettier nos arquivos TypeScript e Markdown.
+# Stripe webhook
+
+Em producao, crie um webhook da Stripe apontando para `https://api.bbrain.com/webhooks/stripe`.
+
+Use `Snapshot events`, selecione apenas estes 6 eventos:
+- `checkout.session.completed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.paid`
+- `invoice.payment_failed`
+
+Coloque o signing secret em `STRIPE_WEBHOOK_SECRET`.
+
+Nao use `thin events` nem a opcao de eventos minimos neste momento.

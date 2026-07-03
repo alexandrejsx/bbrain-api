@@ -23,6 +23,15 @@ export class MongoUserRepository implements UserRepository {
     return doc ? MongoUserMapper.toDomain(doc) : null;
   }
 
+  async findScheduledForDeletionDueBefore(date: Date): Promise<User[]> {
+    const docs = await this.baseRepository.findAll({
+      account_deactivated_at: { $ne: null },
+      account_scheduled_deletion_at: { $lte: date }
+    });
+
+    return docs.map((doc) => MongoUserMapper.toDomain(doc));
+  }
+
   async save(user: User): Promise<void> {
     const persistence = MongoUserMapper.toPersistence(user);
 
@@ -38,5 +47,9 @@ export class MongoUserRepository implements UserRepository {
     }
 
     await this.baseRepository.add(persistence);
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.baseRepository.delete(id);
   }
 }

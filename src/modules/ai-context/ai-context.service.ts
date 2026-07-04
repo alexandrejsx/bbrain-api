@@ -54,7 +54,8 @@ export class AIContextService {
     }
 
     const userIdentityContext = {
-      displayName: this.buildDisplayName(user)
+      displayName: this.buildDisplayName(user),
+      preferredLanguage: cleanText(user.profile?.basicInfo.language)
     };
 
     if (!profile) {

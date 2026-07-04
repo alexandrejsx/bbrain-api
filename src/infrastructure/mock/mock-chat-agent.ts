@@ -61,6 +61,33 @@ const GENERAL_REPLIES = [
   'Parece que isso merece atenção. Como essa experiência tem aparecido no seu dia a dia?'
 ] as const;
 
+const GENERAL_REPLIES_BY_LANGUAGE = {
+  'pt-BR': GENERAL_REPLIES,
+  'en-US': [
+    'Thank you for sharing that with me. Which part of this feels most important to look at first?',
+    'It makes sense to give this some space. What do you notice in yourself when you think about it?',
+    'We can look at this calmly. What has felt hardest right now?',
+    'I am here with you. What would you like to understand better about what happened?',
+    'This sounds worth paying attention to. How has this experience been showing up in your day?'
+  ],
+  'es-ES': [
+    'Gracias por compartir eso conmigo. ¿Qué parte de esta situación parece más importante mirar primero?',
+    'Tiene sentido darle espacio a esto. ¿Qué notas en ti cuando piensas en esa situación?',
+    'Podemos mirar esto con calma. ¿Qué ha sido lo más difícil en este momento?',
+    'Estoy contigo. ¿Qué te gustaría comprender mejor sobre lo que pasó?',
+    'Parece que esto merece atención. ¿Cómo ha aparecido esta experiencia en tu día a día?'
+  ]
+} as const;
+
+const HIGH_RISK_REPLIES = {
+  'pt-BR':
+    'Sinto muito que você esteja passando por isso. Procure agora uma pessoa de confiança e não fique sozinho. Se houver risco imediato, vá para um lugar seguro e contate o serviço de emergência da sua região.',
+  'en-US':
+    'I am sorry you are going through this. Contact someone you trust now and do not stay alone. If there is immediate risk, go somewhere safe and contact emergency services in your area.',
+  'es-ES':
+    'Siento mucho que estés pasando por esto. Busca ahora a una persona de confianza y no te quedes a solas. Si hay riesgo inmediato, ve a un lugar seguro y contacta al servicio de emergencia de tu región.'
+} as const;
+
 function normalize(value: string): string {
   return value
     .normalize('NFD')
@@ -68,19 +95,29 @@ function normalize(value: string): string {
     .toLowerCase();
 }
 
-function selectGeneralReply(message: string): string {
+function selectGeneralReply(
+  message: string,
+  language: keyof typeof GENERAL_REPLIES_BY_LANGUAGE
+): string {
   const hash = Array.from(message).reduce((total, character) => total + character.charCodeAt(0), 0);
-  return GENERAL_REPLIES[hash % GENERAL_REPLIES.length];
+  const replies = GENERAL_REPLIES_BY_LANGUAGE[language];
+  return replies[hash % replies.length];
+}
+
+function normalizeResponseLanguage(language?: string): keyof typeof GENERAL_REPLIES_BY_LANGUAGE {
+  if (language?.startsWith('en')) return 'en-US';
+  if (language?.startsWith('es')) return 'es-ES';
+  return 'pt-BR';
 }
 
 @Injectable()
 export class MockChatAgent implements ChatAgent {
   respond(request: ChatAgentRequest): Promise<ChatAgentResponse> {
     const message = normalize(request.message);
+    const responseLanguage = normalizeResponseLanguage(request.responseLanguage);
 
     if (HIGH_RISK_KEYWORDS.some((keyword) => message.includes(keyword))) {
-      const reply =
-        'Sinto muito que você esteja passando por isso. Procure agora uma pessoa de confiança e não fique sozinho. Se houver risco imediato, vá para um lugar seguro e contate o serviço de emergência da sua região.';
+      const reply = HIGH_RISK_REPLIES[responseLanguage];
 
       return Promise.resolve({
         reply,
@@ -95,7 +132,7 @@ export class MockChatAgent implements ChatAgent {
       rule.keywords.some((keyword) => message.includes(keyword))
     );
 
-    const reply = matchedRule?.reply ?? selectGeneralReply(message);
+    const reply = matchedRule?.reply ?? selectGeneralReply(message, responseLanguage);
 
     return Promise.resolve({
       reply,

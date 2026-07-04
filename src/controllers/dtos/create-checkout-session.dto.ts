@@ -1,4 +1,4 @@
-import { IsEnum } from 'class-validator';
+import { IsEnum, IsOptional } from 'class-validator';
 import {
   BillingCurrency,
   BillingInterval,
@@ -13,8 +13,9 @@ export class CreateCheckoutSessionDto {
   @IsEnum(BillingInterval)
   billingInterval: BillingInterval;
 
+  @IsOptional()
   @IsEnum(BillingCurrency)
-  currency: BillingCurrency;
+  currency?: BillingCurrency;
 
   @IsEnum(PaymentMethodType)
   paymentMethod: PaymentMethodType;

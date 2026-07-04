@@ -39,8 +39,22 @@ describe('Plan definitions', () => {
 
   it('keeps public prices and Pix amounts in cents in the central definition', () => {
     expect(PLAN_DEFINITIONS.standard.prices.brl.monthly.amount).toBe(1_990);
+    expect(PLAN_DEFINITIONS.standard.prices.brl.monthly.amountCents).toBe(1_990);
+    expect(PLAN_DEFINITIONS.standard.prices.brl.yearly.amount).toBe(17_880);
+    expect(PLAN_DEFINITIONS.standard.prices.brl.yearly.amountCents).toBe(17_880);
     expect(PLAN_DEFINITIONS.standard.prices.brl.yearly.pixAmount).toBe(17_880);
+    expect(PLAN_DEFINITIONS.standard.prices.usd.monthly.amount).toBe(599);
+    expect(PLAN_DEFINITIONS.standard.prices.usd.monthly.amountCents).toBe(599);
+    expect(PLAN_DEFINITIONS.standard.prices.usd.yearly.amount).toBe(5_988);
+    expect(PLAN_DEFINITIONS.standard.prices.usd.yearly.amountCents).toBe(5_988);
+    expect(PLAN_DEFINITIONS.pro.prices.brl.monthly.amount).toBe(4_990);
+    expect(PLAN_DEFINITIONS.pro.prices.brl.monthly.amountCents).toBe(4_990);
+    expect(PLAN_DEFINITIONS.pro.prices.brl.yearly.amount).toBe(47_880);
+    expect(PLAN_DEFINITIONS.pro.prices.brl.yearly.amountCents).toBe(47_880);
+    expect(PLAN_DEFINITIONS.pro.prices.usd.monthly.amount).toBe(1_499);
+    expect(PLAN_DEFINITIONS.pro.prices.usd.monthly.amountCents).toBe(1_499);
     expect(PLAN_DEFINITIONS.pro.prices.usd.yearly.amount).toBe(14_388);
+    expect(PLAN_DEFINITIONS.pro.prices.usd.yearly.amountCents).toBe(14_388);
   });
 
   it('resolves Stripe price IDs only from environment keys', () => {
@@ -64,6 +78,6 @@ describe('Plan definitions', () => {
 
     expect(() =>
       service.getPixAmount(PlanType.PRO, BillingInterval.YEARLY, BillingCurrency.USD)
-    ).toThrow('Pix está disponível apenas em BRL.');
+    ).toThrow('Pix está disponível apenas para contas do Brasil.');
   });
 });

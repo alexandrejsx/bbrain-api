@@ -285,11 +285,30 @@ export function buildBbrainSystemMessage(request?: ChatAgentRequest): ChatMessag
         ...adaptation.instructions.map((instruction) => `- ${instruction}`)
       ].join('\n')
     : undefined;
+  const languageBlock = request?.responseLanguage
+    ? [
+        'RESPONSE_LANGUAGE:',
+        `Preferred app/profile language: ${request.preferredLanguage ?? 'unknown'}.`,
+        `Detected current message language: ${request.detectedMessageLanguage ?? 'not detected'}.`,
+        `Respond in: ${describeResponseLanguage(request.responseLanguage)}.`,
+        'The current user message language has priority over profile language when clearly detected.',
+        'Keep JSON property names exactly as specified by the schema.',
+        'Write the user-facing "reply" in the response language.'
+      ].join('\n')
+    : undefined;
 
   return {
     role: 'system' as const,
-    content: [promptRegistry.companion.content, adaptationBlock].filter(Boolean).join('\n\n')
+    content: [promptRegistry.companion.content, languageBlock, adaptationBlock]
+      .filter(Boolean)
+      .join('\n\n')
   };
+}
+
+function describeResponseLanguage(language: string) {
+  if (language.startsWith('en')) return 'English';
+  if (language.startsWith('es')) return 'Spanish';
+  return 'Portuguese';
 }
 
 export function buildUserContextMessage(request: ChatAgentRequest): ChatMessage {

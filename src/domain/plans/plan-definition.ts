@@ -50,6 +50,7 @@ export type LegacyPlanType = 'premium';
 
 export interface PlanPriceDefinition {
   amount: number;
+  amountCents: number;
   currency: BillingCurrency;
   interval: BillingInterval;
   displayMonthly: string;
@@ -81,6 +82,7 @@ const freePrices = {
   [BillingCurrency.BRL]: {
     [BillingInterval.MONTHLY]: {
       amount: 0,
+      amountCents: 0,
       currency: BillingCurrency.BRL,
       interval: BillingInterval.MONTHLY,
       displayMonthly: 'R$ 0',
@@ -88,6 +90,7 @@ const freePrices = {
     },
     [BillingInterval.YEARLY]: {
       amount: 0,
+      amountCents: 0,
       currency: BillingCurrency.BRL,
       interval: BillingInterval.YEARLY,
       displayMonthly: 'R$ 0',
@@ -97,6 +100,7 @@ const freePrices = {
   [BillingCurrency.USD]: {
     [BillingInterval.MONTHLY]: {
       amount: 0,
+      amountCents: 0,
       currency: BillingCurrency.USD,
       interval: BillingInterval.MONTHLY,
       displayMonthly: 'US$ 0',
@@ -104,6 +108,7 @@ const freePrices = {
     },
     [BillingInterval.YEARLY]: {
       amount: 0,
+      amountCents: 0,
       currency: BillingCurrency.USD,
       interval: BillingInterval.YEARLY,
       displayMonthly: 'US$ 0',
@@ -147,6 +152,7 @@ export const PLAN_DEFINITIONS: Record<PlanType, PlanDefinition> = {
       [BillingCurrency.BRL]: {
         [BillingInterval.MONTHLY]: {
           amount: 1_990,
+          amountCents: 1_990,
           currency: BillingCurrency.BRL,
           interval: BillingInterval.MONTHLY,
           displayMonthly: 'R$ 19,90/mês',
@@ -156,6 +162,7 @@ export const PLAN_DEFINITIONS: Record<PlanType, PlanDefinition> = {
         },
         [BillingInterval.YEARLY]: {
           amount: 17_880,
+          amountCents: 17_880,
           currency: BillingCurrency.BRL,
           interval: BillingInterval.YEARLY,
           displayMonthly: 'R$ 14,90/mês',
@@ -167,6 +174,7 @@ export const PLAN_DEFINITIONS: Record<PlanType, PlanDefinition> = {
       [BillingCurrency.USD]: {
         [BillingInterval.MONTHLY]: {
           amount: 599,
+          amountCents: 599,
           currency: BillingCurrency.USD,
           interval: BillingInterval.MONTHLY,
           displayMonthly: 'US$ 5.99/mês',
@@ -175,6 +183,7 @@ export const PLAN_DEFINITIONS: Record<PlanType, PlanDefinition> = {
         },
         [BillingInterval.YEARLY]: {
           amount: 5_988,
+          amountCents: 5_988,
           currency: BillingCurrency.USD,
           interval: BillingInterval.YEARLY,
           displayMonthly: 'US$ 4.99/mês',
@@ -202,6 +211,7 @@ export const PLAN_DEFINITIONS: Record<PlanType, PlanDefinition> = {
       [BillingCurrency.BRL]: {
         [BillingInterval.MONTHLY]: {
           amount: 4_990,
+          amountCents: 4_990,
           currency: BillingCurrency.BRL,
           interval: BillingInterval.MONTHLY,
           displayMonthly: 'R$ 49,90/mês',
@@ -211,6 +221,7 @@ export const PLAN_DEFINITIONS: Record<PlanType, PlanDefinition> = {
         },
         [BillingInterval.YEARLY]: {
           amount: 47_880,
+          amountCents: 47_880,
           currency: BillingCurrency.BRL,
           interval: BillingInterval.YEARLY,
           displayMonthly: 'R$ 39,90/mês',
@@ -222,6 +233,7 @@ export const PLAN_DEFINITIONS: Record<PlanType, PlanDefinition> = {
       [BillingCurrency.USD]: {
         [BillingInterval.MONTHLY]: {
           amount: 1_499,
+          amountCents: 1_499,
           currency: BillingCurrency.USD,
           interval: BillingInterval.MONTHLY,
           displayMonthly: 'US$ 14.99/mês',
@@ -230,6 +242,7 @@ export const PLAN_DEFINITIONS: Record<PlanType, PlanDefinition> = {
         },
         [BillingInterval.YEARLY]: {
           amount: 14_388,
+          amountCents: 14_388,
           currency: BillingCurrency.USD,
           interval: BillingInterval.YEARLY,
           displayMonthly: 'US$ 11.99/mês',

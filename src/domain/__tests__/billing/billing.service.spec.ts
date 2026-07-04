@@ -14,6 +14,7 @@ import {
   SubscriptionStatus
 } from '../../plans/plan-definition';
 import { User } from '../../users/entities/user.entity';
+import type { UserProfileSnapshot } from '../../users/entities/user-profile.types';
 import { UserRepository } from '../../users/repositories/user.repository';
 import { Email } from '../../users/value-objects/email.vo';
 import { UserName } from '../../users/value-objects/user-name.vo';
@@ -133,13 +134,40 @@ class InMemoryProviderEventRepository implements ProviderEventRepository {
   }
 }
 
-function createUser() {
-  return User.register({
+function createUser(nationality = 'BR') {
+  const user = User.register({
     name: new UserName('Usuário'),
     email: new Email('usuario-billing@bbrain.com'),
     passwordHash: 'hashed-password',
     acceptedTermsAt: new Date('2026-01-01T00:00:00.000Z')
   });
+
+  if (nationality) {
+    user.updateProfile(createProfileSnapshot(nationality), new Date('2026-01-01T00:00:00.000Z'));
+  }
+
+  return user;
+}
+
+function createProfileSnapshot(nationality: string): UserProfileSnapshot {
+  return {
+    profileCompleted: true,
+    basicInfo: {
+      nationality,
+      language: 'pt-BR'
+    },
+    goals: {
+      mainGoals: []
+    },
+    conversationPreferences: {},
+    professionalContext: {},
+    privacySettings: {
+      allowPersonalization: true,
+      allowMemory: true,
+      allowMoodInsights: true,
+      allowSensitiveDataStorage: true
+    }
+  };
 }
 
 function createService() {
@@ -248,6 +276,37 @@ function createStripeSubscription(
 }
 
 describe('BillingService', () => {
+  it('resolves BRL for Brazilian accounts independently of language', () => {
+    const service = new PlansService();
+    const user = createUser('BR');
+    user.updateProfile(
+      {
+        ...createProfileSnapshot('BR'),
+        basicInfo: {
+          nationality: 'BR',
+          language: 'en-US'
+        }
+      },
+      new Date('2026-01-01T00:00:00.000Z')
+    );
+
+    expect(service.resolveBillingCurrency(user)).toBe(BillingCurrency.BRL);
+  });
+
+  it('resolves USD for non-Brazilian accounts even when the language is pt-BR', () => {
+    const service = new PlansService();
+    const user = createUser('US');
+
+    expect(service.resolveBillingCurrency(user)).toBe(BillingCurrency.USD);
+  });
+
+  it('defaults to USD when the account country is missing', () => {
+    const service = new PlansService();
+    const user = createUser('');
+
+    expect(service.resolveBillingCurrency(user)).toBe(BillingCurrency.USD);
+  });
+
   it('creates Stripe checkout without activating the paid plan', async () => {
     const { service, userRepository, stripeProvider } = createService();
     const user = createUser();
@@ -259,7 +318,6 @@ describe('BillingService', () => {
       userId: user.id.value,
       plan: PlanType.STANDARD,
       billingInterval: BillingInterval.MONTHLY,
-      currency: BillingCurrency.BRL,
       paymentMethod: PaymentMethodType.CARD
     });
 
@@ -273,6 +331,59 @@ describe('BillingService', () => {
       delete process.env.STRIPE_PRICE_STANDARD_MONTHLY_BRL;
     } else {
       process.env.STRIPE_PRICE_STANDARD_MONTHLY_BRL = previous;
+    }
+  });
+
+  it('ignores an incorrect frontend currency and uses BRL for Brazilian Stripe checkout', async () => {
+    const { service, userRepository, stripeProvider } = createService();
+    const user = createUser('BR');
+    userRepository.add(user);
+    const previous = process.env.STRIPE_PRICE_STANDARD_MONTHLY_BRL;
+    process.env.STRIPE_PRICE_STANDARD_MONTHLY_BRL = 'price_standard_monthly_brl';
+
+    const checkout = await service.createCheckoutSession({
+      userId: user.id.value,
+      plan: PlanType.STANDARD,
+      billingInterval: BillingInterval.MONTHLY,
+      requestedCurrency: BillingCurrency.USD,
+      paymentMethod: PaymentMethodType.CARD
+    });
+
+    expect(checkout).toMatchObject({ provider: PaymentProviderType.STRIPE, type: 'redirect' });
+    expect(stripeProvider.createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ priceId: 'price_standard_monthly_brl' })
+    );
+
+    if (previous === undefined) {
+      delete process.env.STRIPE_PRICE_STANDARD_MONTHLY_BRL;
+    } else {
+      process.env.STRIPE_PRICE_STANDARD_MONTHLY_BRL = previous;
+    }
+  });
+
+  it('uses USD for non-Brazilian Stripe checkout', async () => {
+    const { service, userRepository, stripeProvider } = createService();
+    const user = createUser('US');
+    userRepository.add(user);
+    const previous = process.env.STRIPE_PRICE_STANDARD_MONTHLY_USD;
+    process.env.STRIPE_PRICE_STANDARD_MONTHLY_USD = 'price_standard_monthly_usd';
+
+    const checkout = await service.createCheckoutSession({
+      userId: user.id.value,
+      plan: PlanType.STANDARD,
+      billingInterval: BillingInterval.MONTHLY,
+      paymentMethod: PaymentMethodType.CARD
+    });
+
+    expect(checkout).toMatchObject({ provider: PaymentProviderType.STRIPE, type: 'redirect' });
+    expect(stripeProvider.createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ priceId: 'price_standard_monthly_usd' })
+    );
+
+    if (previous === undefined) {
+      delete process.env.STRIPE_PRICE_STANDARD_MONTHLY_USD;
+    } else {
+      process.env.STRIPE_PRICE_STANDARD_MONTHLY_USD = previous;
     }
   });
 
@@ -330,7 +441,7 @@ describe('BillingService', () => {
 
   it('rejects Pix checkout in USD', async () => {
     const { service, userRepository } = createService();
-    const user = createUser();
+    const user = createUser('US');
     userRepository.add(user);
 
     await expect(
@@ -338,10 +449,9 @@ describe('BillingService', () => {
         userId: user.id.value,
         plan: PlanType.PRO,
         billingInterval: BillingInterval.YEARLY,
-        currency: BillingCurrency.USD,
         paymentMethod: PaymentMethodType.PIX
       })
-    ).rejects.toThrow('Pix está disponível apenas em BRL.');
+    ).rejects.toThrow('Pix está disponível apenas para contas do Brasil.');
   });
 
   it('creates a Asaas payment order with the configured plan amount', async () => {
@@ -353,7 +463,6 @@ describe('BillingService', () => {
       userId: user.id.value,
       plan: PlanType.PRO,
       billingInterval: BillingInterval.MONTHLY,
-      currency: BillingCurrency.BRL,
       paymentMethod: PaymentMethodType.PIX
     });
     const order = await paymentOrderRepository.findById(checkout.paymentId ?? '');
@@ -394,7 +503,6 @@ describe('BillingService', () => {
         userId: user.id.value,
         plan: PlanType.PRO,
         billingInterval: BillingInterval.MONTHLY,
-        currency: BillingCurrency.BRL,
         paymentMethod: PaymentMethodType.PIX
       });
       const order = await paymentOrderRepository.findById(checkout.paymentId ?? '');
@@ -442,7 +550,6 @@ describe('BillingService', () => {
           userId: user.id.value,
           plan: PlanType.STANDARD,
           billingInterval: BillingInterval.MONTHLY,
-          currency: BillingCurrency.BRL,
           paymentMethod: PaymentMethodType.PIX
         })
       ).rejects.toThrow(
@@ -489,7 +596,6 @@ describe('BillingService', () => {
       userId: user.id.value,
       plan: PlanType.STANDARD,
       billingInterval: BillingInterval.MONTHLY,
-      currency: BillingCurrency.BRL,
       paymentMethod: PaymentMethodType.PIX
     });
 
@@ -523,7 +629,6 @@ describe('BillingService', () => {
       userId: user.id.value,
       plan: PlanType.STANDARD,
       billingInterval: BillingInterval.MONTHLY,
-      currency: BillingCurrency.BRL,
       paymentMethod: PaymentMethodType.PIX
     });
 

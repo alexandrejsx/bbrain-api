@@ -26,6 +26,9 @@ export interface ChatAgentResponse {
 export interface ChatAgentRequest {
   message: string;
   context: AIContext;
+  preferredLanguage?: string;
+  detectedMessageLanguage?: string;
+  responseLanguage?: string;
 }
 
 export interface ChatAgent {

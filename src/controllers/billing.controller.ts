@@ -22,7 +22,7 @@ export class BillingController {
       userId: request.user!.id,
       plan: dto.plan,
       billingInterval: dto.billingInterval,
-      currency: dto.currency,
+      requestedCurrency: dto.currency,
       paymentMethod: dto.paymentMethod
     });
   }

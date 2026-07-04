@@ -30,7 +30,8 @@ export class ChatController {
       return await this.sendChatMessageUseCase.execute({
         userId: request.user!.id,
         conversationId: dto.conversationId,
-        message: dto.message
+        message: dto.message,
+        acceptedLanguage: getHeaderValue(request.headers['accept-language'])
       });
     } catch (error) {
       if (error instanceof ChatProviderUnavailableError) {
@@ -59,4 +60,8 @@ export class ChatController {
       throw error;
     }
   }
+}
+
+function getHeaderValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
 }

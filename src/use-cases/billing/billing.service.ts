@@ -28,7 +28,7 @@ interface CreateCheckoutSessionInput {
   userId: string;
   plan: unknown;
   billingInterval: unknown;
-  currency: unknown;
+  requestedCurrency?: unknown;
   paymentMethod: unknown;
 }
 
@@ -141,20 +141,25 @@ export class BillingService {
   async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CheckoutResult> {
     const plan = this.plansService.validatePaidPlan(input.plan);
     const billingInterval = this.plansService.validateBillingInterval(input.billingInterval);
-    const currency = this.plansService.validateBillingCurrency(input.currency);
     const paymentMethod = this.plansService.validatePaymentMethod(input.paymentMethod);
+    const user = await this.getUser(input.userId);
+    const currency = this.plansService.resolveBillingCurrency(user);
 
     if (paymentMethod === PaymentMethodType.CARD) {
       return this.createStripeCheckout({
-        userId: input.userId,
+        user,
         plan,
         billingInterval,
         currency
       });
     }
 
+    if (currency !== BillingCurrency.BRL) {
+      throw new BadRequestException('Pix está disponível apenas para contas do Brasil.');
+    }
+
     return this.createAsaasPixCheckout({
-      userId: input.userId,
+      user,
       plan,
       billingInterval,
       currency
@@ -228,12 +233,12 @@ export class BillingService {
   }
 
   private async createStripeCheckout(input: {
-    userId: string;
+    user: User;
     plan: Exclude<PlanType, PlanType.FREE>;
     billingInterval: BillingInterval;
     currency: BillingCurrency;
   }): Promise<CheckoutResult> {
-    const user = await this.getUser(input.userId);
+    const user = input.user;
     const customerId = await this.ensureStripeCustomer(user);
     const priceId = this.plansService.getStripePriceId(
       input.plan,
@@ -261,16 +266,16 @@ export class BillingService {
   }
 
   private async createAsaasPixCheckout(input: {
-    userId: string;
+    user: User;
     plan: Exclude<PlanType, PlanType.FREE>;
     billingInterval: BillingInterval;
     currency: BillingCurrency;
   }): Promise<CheckoutResult> {
     if (input.currency !== BillingCurrency.BRL) {
-      throw new BadRequestException('Pix está disponível apenas em BRL.');
+      throw new BadRequestException('Pix está disponível apenas para contas do Brasil.');
     }
 
-    const user = await this.getUser(input.userId);
+    const user = input.user;
     const latestSubscription = await this.subscriptionRepository.findLatestByUserId(user.id.value);
     const now = new Date();
     const calculation = this.planChangeCalculator.calculate({

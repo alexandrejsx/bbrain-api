@@ -9,6 +9,7 @@ export interface AIContextMessage {
 
 export interface AIUserIdentityContext {
   displayName: string;
+  preferredLanguage?: string;
 }
 
 export interface AIUserProfileSummary {

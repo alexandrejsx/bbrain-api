@@ -13,6 +13,7 @@ import {
   PlanType,
   PublicPlanDefinition
 } from '../../domain/plans/plan-definition';
+import { User } from '../../domain/users/entities/user.entity';
 
 export interface ResolvedStripePrice {
   plan: Exclude<PlanType, PlanType.FREE>;
@@ -72,6 +73,12 @@ export class PlansService {
     return currency;
   }
 
+  resolveBillingCurrency(user: User): BillingCurrency {
+    return user.profile?.basicInfo.nationality?.trim().toUpperCase() === 'BR'
+      ? BillingCurrency.BRL
+      : BillingCurrency.USD;
+  }
+
   validatePaymentMethod(paymentMethod: unknown): PaymentMethodType {
     if (!isPaymentMethodType(paymentMethod)) {
       throw new BadRequestException('Método de pagamento inválido.');
@@ -103,7 +110,7 @@ export class PlansService {
     currency: BillingCurrency
   ): number {
     if (currency !== BillingCurrency.BRL) {
-      throw new BadRequestException('Pix está disponível apenas em BRL.');
+      throw new BadRequestException('Pix está disponível apenas para contas do Brasil.');
     }
 
     const definition = this.getPlanDefinition(plan);

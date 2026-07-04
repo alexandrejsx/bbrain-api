@@ -11,15 +11,6 @@ interface MockReplyRule {
   reply: string;
 }
 
-const HIGH_RISK_KEYWORDS = [
-  'suicid',
-  'me matar',
-  'tirar minha vida',
-  'nao quero viver',
-  'nao aguento mais viver',
-  'me machucar'
-] as const;
-
 const REPLY_RULES: readonly MockReplyRule[] = [
   {
     keywords: ['ansied', 'ansioso', 'ansiosa', 'nervoso', 'nervosa', 'preocupad'],
@@ -79,15 +70,6 @@ const GENERAL_REPLIES_BY_LANGUAGE = {
   ]
 } as const;
 
-const HIGH_RISK_REPLIES = {
-  'pt-BR':
-    'Sinto muito que você esteja passando por isso. Procure agora uma pessoa de confiança e não fique sozinho. Se houver risco imediato, vá para um lugar seguro e contate o serviço de emergência da sua região.',
-  'en-US':
-    'I am sorry you are going through this. Contact someone you trust now and do not stay alone. If there is immediate risk, go somewhere safe and contact emergency services in your area.',
-  'es-ES':
-    'Siento mucho que estés pasando por esto. Busca ahora a una persona de confianza y no te quedes a solas. Si hay riesgo inmediato, ve a un lugar seguro y contacta al servicio de emergencia de tu región.'
-} as const;
-
 function normalize(value: string): string {
   return value
     .normalize('NFD')
@@ -115,18 +97,6 @@ export class MockChatAgent implements ChatAgent {
   respond(request: ChatAgentRequest): Promise<ChatAgentResponse> {
     const message = normalize(request.message);
     const responseLanguage = normalizeResponseLanguage(request.responseLanguage);
-
-    if (HIGH_RISK_KEYWORDS.some((keyword) => message.includes(keyword))) {
-      const reply = HIGH_RISK_REPLIES[responseLanguage];
-
-      return Promise.resolve({
-        reply,
-        riskLevel: 'high',
-        scopeStatus: 'in_scope',
-        profileUpdate: { shouldUpdate: false },
-        usage: estimateLlmUsageFromText(request.message, reply)
-      });
-    }
 
     const matchedRule = REPLY_RULES.find((rule) =>
       rule.keywords.some((keyword) => message.includes(keyword))

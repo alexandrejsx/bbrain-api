@@ -37,14 +37,6 @@ import { SupportPlan } from '../../support-plan/entities/support-plan.entity';
 import { PlanPeriod } from '../../support-plan/value-objects/support-plan.value-objects';
 
 describe('BBrain context skeletons', () => {
-  beforeEach(() => {
-    jest.spyOn(console, 'info').mockImplementation();
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
   it('creates conversation aggregate with its initial event', () => {
     const conversation = Conversation.create({
       userId: 'user-id',

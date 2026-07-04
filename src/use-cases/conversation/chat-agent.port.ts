@@ -1,6 +1,6 @@
 import { ConversationScopeStatus } from '../../domain/conversation/services/conversation-scope-policy.service';
 import { LlmUsage } from '../../domain/usage/value-objects/llm-usage';
-import { AIContext } from '../../modules/ai-context/ai-context.types';
+import { ConversationAgentContext } from './conversation-agent-context';
 
 export type ChatRiskLevel = 'none' | 'low' | 'medium' | 'high';
 
@@ -25,9 +25,8 @@ export interface ChatAgentResponse {
 
 export interface ChatAgentRequest {
   message: string;
-  context: AIContext;
+  context: ConversationAgentContext;
   preferredLanguage?: string;
-  detectedMessageLanguage?: string;
   responseLanguage?: string;
 }
 

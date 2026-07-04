@@ -2,14 +2,15 @@ import { ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { User } from '../../../domain/users/entities/user.entity';
+import {
+  StripeCheckoutInput,
+  StripePaymentPort,
+  StripeSubscriptionSnapshot,
+  StripeWebhookEvent,
+  StripeWebhookEventData
+} from '../../../use-cases/billing/ports/payment-provider.port';
 
-export interface StripeCheckoutInput {
-  customerId: string;
-  priceId: string;
-  metadata: Record<string, string>;
-}
-
-export class StripePaymentProvider {
+export class StripePaymentProvider implements StripePaymentPort {
   private readonly stripe: Stripe | null;
 
   constructor(private readonly config: ConfigService) {
@@ -60,18 +61,24 @@ export class StripePaymentProvider {
     return { url: session.url };
   }
 
-  constructWebhookEvent(rawBody: Buffer, stripeSignature: string): Stripe.Event {
+  constructWebhookEvent(rawBody: Buffer, stripeSignature: string): StripeWebhookEvent {
     const webhookSecret = this.config.get<string>('billing.stripeWebhookSecret');
 
     if (!webhookSecret) {
       throw new ServiceUnavailableException('Stripe webhook is not configured');
     }
 
-    return this.getStripe().webhooks.constructEvent(rawBody, stripeSignature, webhookSecret);
+    const event = this.getStripe().webhooks.constructEvent(rawBody, stripeSignature, webhookSecret);
+
+    return {
+      id: event.id,
+      type: event.type,
+      data: mapStripeWebhookData(event)
+    };
   }
 
-  retrieveSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
-    return this.getStripe().subscriptions.retrieve(subscriptionId);
+  async retrieveSubscription(subscriptionId: string): Promise<StripeSubscriptionSnapshot> {
+    return mapStripeSubscription(await this.getStripe().subscriptions.retrieve(subscriptionId));
   }
 
   private getStripe(): Stripe {
@@ -81,4 +88,78 @@ export class StripePaymentProvider {
 
     return this.stripe;
   }
+}
+
+function mapStripeWebhookData(event: Stripe.Event): StripeWebhookEventData {
+  switch (event.type) {
+    case 'checkout.session.completed': {
+      const session = event.data.object;
+
+      return {
+        kind: 'checkout.session.completed',
+        subscriptionId: getStripeId(session.subscription),
+        metadata: toMetadataRecord(session.metadata)
+      };
+    }
+    case 'customer.subscription.created':
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted':
+      return {
+        kind: 'subscription',
+        subscription: mapStripeSubscription(event.data.object)
+      };
+    case 'invoice.paid':
+    case 'invoice.payment_failed':
+      return {
+        kind: 'invoice',
+        subscriptionId: getStripeId(readValue(event.data.object, 'subscription'))
+      };
+    default:
+      return { kind: 'unknown' };
+  }
+}
+
+function mapStripeSubscription(subscription: Stripe.Subscription): StripeSubscriptionSnapshot {
+  return {
+    id: subscription.id,
+    status: subscription.status,
+    customerId: getStripeId(subscription.customer),
+    priceId: subscription.items.data[0]?.price?.id,
+    metadata: toMetadataRecord(subscription.metadata),
+    currentPeriodStart: toDate(readNumber(subscription, 'current_period_start')),
+    currentPeriodEnd: toDate(readNumber(subscription, 'current_period_end')),
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    cancelAt: toDate(subscription.cancel_at),
+    canceledAt: toDate(subscription.canceled_at),
+    latestInvoiceId: getStripeId(readValue(subscription, 'latest_invoice'))
+  };
+}
+
+function toMetadataRecord(metadata?: Stripe.Metadata | null): Record<string, string> {
+  return metadata ? { ...metadata } : {};
+}
+
+function getStripeId(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value && typeof value === 'object' && 'id' in value && typeof value.id === 'string') {
+    return value.id;
+  }
+
+  return undefined;
+}
+
+function readNumber(value: object, key: string): number | undefined {
+  const item = readValue(value, key);
+  return typeof item === 'number' ? item : undefined;
+}
+
+function readValue(value: object, key: string): unknown {
+  return (value as Record<string, unknown>)[key];
+}
+
+function toDate(timestamp?: number | null): Date | undefined {
+  return typeof timestamp === 'number' ? new Date(timestamp * 1000) : undefined;
 }

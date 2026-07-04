@@ -25,7 +25,8 @@ interface JwtPayload {
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
-    @Inject(USERS_REPOSITORY) private readonly userRepository: UserRepository
+    @Inject(USERS_REPOSITORY)
+    private readonly userRepository: UserRepository
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

@@ -220,8 +220,8 @@ function createService() {
     new PlansService(),
     new PlanChangeCalculatorService(),
     usageService as never,
-    stripeProvider as never,
-    asaasProvider as never
+    stripeProvider,
+    asaasProvider
   );
 
   return {

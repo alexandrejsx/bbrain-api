@@ -37,11 +37,6 @@ interface GeminiConfig {
   timeoutMs: number;
 }
 
-interface QueueConfig {
-  provider: 'memory' | 'bullmq' | 'inngest';
-  redisUrl?: string;
-}
-
 interface StripePriceConfig {
   standardMonthlyBrl?: string;
   standardYearlyBrl?: string;
@@ -67,25 +62,8 @@ interface BillingConfig {
   prices: StripePriceConfig;
 }
 
-interface StorageConfig {
-  type: 'local' | 's3';
-  bucketName?: string;
-  defaultRegion?: string;
-  baseUrl?: string;
-}
-
-interface ObservabilityConfig {
-  sentryDsn?: string;
-  langfusePublicKey?: string;
-  langfuseSecretKey?: string;
-  langfuseBaseUrl?: string;
-}
-
-interface AgentConfig {
-  enabled: boolean;
-  tracingEnabled: boolean;
-  maxToolCalls: number;
-  defaultTemperature: number;
+interface AiConfig {
+  chatProvider: 'gemini' | 'openai' | 'mock';
 }
 
 interface CorsConfig {
@@ -101,13 +79,10 @@ interface AppConfig {
   mongoDb: MongoDBConfig;
   auth: AuthConfig;
   email: EmailConfig;
+  ai: AiConfig;
   openAi: OpenAIConfig;
   gemini: GeminiConfig;
-  queue: QueueConfig;
   billing: BillingConfig;
-  storage: StorageConfig;
-  observability: ObservabilityConfig;
-  agent: AgentConfig;
 }
 
 const DEFAULT_BBRAIN_MODELS = {
@@ -116,20 +91,16 @@ const DEFAULT_BBRAIN_MODELS = {
   escalation: 'gpt-5.4'
 } as const;
 
-const parseQueueProvider = (value?: string): QueueConfig['provider'] => {
-  if (value === 'bullmq' || value === 'inngest') {
+const parseEmailProvider = (value?: string): EmailConfig['provider'] => {
+  return value === 'resend' ? 'resend' : 'log';
+};
+
+const parseChatProvider = (value?: string): AiConfig['chatProvider'] => {
+  if (value === 'openai' || value === 'mock') {
     return value;
   }
 
-  return 'memory';
-};
-
-const parseStorageType = (value?: string): StorageConfig['type'] => {
-  return value === 's3' ? 's3' : 'local';
-};
-
-const parseEmailProvider = (value?: string): EmailConfig['provider'] => {
-  return value === 'resend' ? 'resend' : 'log';
+  return 'gemini';
 };
 
 const parseCorsOrigins = (value?: string): string[] => {
@@ -181,6 +152,9 @@ const config = (): AppConfig => ({
     fromName: process.env.EMAIL_FROM_NAME || 'BBrain',
     resendApiKey: process.env.RESEND_API_KEY
   },
+  ai: {
+    chatProvider: parseChatProvider(process.env.AI_CHAT_PROVIDER)
+  },
   openAi: {
     apiKey: process.env.OPENAI_API_KEY || '',
     models: parseBBrainModels(),
@@ -190,10 +164,6 @@ const config = (): AppConfig => ({
     apiKey: process.env.GEMINI_API_KEY || '',
     model: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
     timeoutMs: Number(process.env.GEMINI_TIMEOUT_MS || 60_000)
-  },
-  queue: {
-    provider: parseQueueProvider(process.env.QUEUE_PROVIDER),
-    redisUrl: process.env.REDIS_URL
   },
   billing: {
     stripeSecretKey: process.env.STRIPE_SECRET_KEY,
@@ -218,24 +188,6 @@ const config = (): AppConfig => ({
       proMonthlyUsd: process.env.STRIPE_PRICE_PRO_MONTHLY_USD,
       proYearlyUsd: process.env.STRIPE_PRICE_PRO_YEARLY_USD
     }
-  },
-  storage: {
-    type: parseStorageType(process.env.STORAGE_TYPE),
-    bucketName: process.env.STORAGE_BUCKET_NAME,
-    defaultRegion: process.env.STORAGE_DEFAULT_REGION,
-    baseUrl: process.env.STORAGE_BASE_URL
-  },
-  observability: {
-    sentryDsn: process.env.SENTRY_DSN,
-    langfusePublicKey: process.env.LANGFUSE_PUBLIC_KEY,
-    langfuseSecretKey: process.env.LANGFUSE_SECRET_KEY,
-    langfuseBaseUrl: process.env.LANGFUSE_BASE_URL
-  },
-  agent: {
-    enabled: process.env.AGENT_ENABLED !== 'false',
-    tracingEnabled: process.env.AGENT_TRACING_ENABLED === 'true',
-    maxToolCalls: Number(process.env.AGENT_MAX_TOOL_CALLS || 8),
-    defaultTemperature: Number(process.env.AGENT_DEFAULT_TEMPERATURE || 0.4)
   }
 });
 

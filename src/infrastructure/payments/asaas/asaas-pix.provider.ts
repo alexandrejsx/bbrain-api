@@ -2,26 +2,11 @@ import { BadRequestException, ServiceUnavailableException } from '@nestjs/common
 import { ConfigService } from '@nestjs/config';
 import { PaymentOrder } from '../../../domain/billing/entities/payment-order.entity';
 import { User } from '../../../domain/users/entities/user.entity';
-
-export interface AsaasPixChargeResult {
-  customerId?: string;
-  providerPaymentId: string;
-  checkoutUrl?: string;
-  qrCodeImage?: string;
-  qrCodeText?: string;
-  expiresAt?: Date;
-}
-
-export interface AsaasWebhookEvent {
-  providerEventId: string;
-  type: string;
-  providerPaymentId?: string;
-  correlationId?: string;
-  paid: boolean;
-  expired: boolean;
-  canceled: boolean;
-  failed: boolean;
-}
+import {
+  AsaasPixChargeResult,
+  AsaasPixPaymentPort,
+  AsaasWebhookEvent
+} from '../../../use-cases/billing/ports/payment-provider.port';
 
 type HeaderBag = Record<string, string | string[] | undefined>;
 
@@ -41,7 +26,7 @@ type AsaasPixQrCodeResponse = {
   expirationDate?: string;
 };
 
-export class AsaasPixProvider {
+export class AsaasPixProvider implements AsaasPixPaymentPort {
   constructor(private readonly config: ConfigService) {}
 
   async createPixCharge(input: {

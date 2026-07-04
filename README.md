@@ -1,10 +1,10 @@
 # BBrain API
 
 Backend principal do BBrain, uma plataforma de acompanhamento psicológico digital com IA,
-diário, humor, sono, rotina, memória longitudinal e agentes internos.
+diário, humor, sono, rotina, memória longitudinal e fluxos sensíveis de produto.
 
-Esta base inicial prepara o projeto para crescer com NestJS, TypeScript, MongoDB e DDD
-pragmático, sem implementar regras de negócio complexas ou endpoints completos de produto.
+O estado atual do projeto combina NestJS, TypeScript, MongoDB e DDD pragmático. A API concentra
+os fluxos implementados de autenticação, perfil reflexivo, chat com IA, uso diário e billing.
 
 ## Stack
 
@@ -23,7 +23,8 @@ pragmático, sem implementar regras de negócio complexas ou endpoints completos
 O projeto separa domínio, casos de uso, infraestrutura, controllers e módulos.
 
 O domínio não depende de NestJS, Mongoose, OpenAI ou qualquer detalhe de infraestrutura.
-Entidades, objetos de valor, eventos e contratos de repositório vivem em `src/domain`.
+Entidades, objetos de valor, eventos e contratos de repositório vivem em contextos dentro de
+`src/domain`.
 
 Integrações externas, persistência, clients HTTP, schemas e mappers vivem em
 `src/infrastructure`.
@@ -37,32 +38,43 @@ providers e dependências da aplicação.
 src/
   domain/
     core/
-    entities/
-    value-objects/
-    services/
-    repositories/
-    events/
+    billing/
+    check-in/
+    conversation/
+    journal/
+    memory/
+    pattern-analysis/
+    plans/
+    risk-assessment/
+    shared/
+    summary/
+    support-plan/
+    usage/
+    users/
     __tests__/
   use-cases/
+    auth/
+    billing/
+    conversation/
+    plans/
+    profile/
   infrastructure/
+    chat/
     database/
       mongodb/
         schemas/
         repositories/
         mappers/
+    events/
+    gemini/
     http/
-      clients/
-      dtos/
-      mappers/
-      exceptions/
       guards/
+    mock/
+    openai/
+    payments/
   controllers/
     dtos/
-  event-handlers/
   modules/
-  cli/
-    commands/
-    utils/
   shared/
     services/
 ```
@@ -77,13 +89,17 @@ A base usa DDD de forma pragmática:
 - `DomainEvent` representa fatos relevantes do domínio.
 - Repositórios de domínio expõem contratos sem acoplar o domínio ao MongoDB.
 
-## Agentes Internos
+## Chat e IA
 
-Todos os agentes ficam dentro do backend NestJS nesta fase inicial.
+O fluxo real de chat entra por `ChatController`, chama `SendChatMessageUseCase`, monta um contexto
+canônico por `ConversationAgentContextBuilderService`, renderiza prompts em `infrastructure/chat`,
+chama uma implementação do port `ChatAgent` e persiste perfil reflexivo, histórico de mensagens e
+uso de LLM.
 
-O módulo `AgentsModule` existe como ponto inicial de composição, mas ainda não implementa
-integração real com OpenAI, memória, ferramentas ou fluxos clínicos. Futuras regras devem seguir
-`BUSINESS_RULES.md`.
+O provider de chat é selecionado em composition por `AI_CHAT_PROVIDER`, com `gemini` como padrão e
+opções `openai` e `mock`. Schemas e parsing técnico de resposta ficam em infraestrutura.
+
+Não há worker de agent, tool calling, RAG, loops ou harnesses implementados neste momento.
 
 ## MongoDB
 
@@ -92,6 +108,12 @@ persistência inicial.
 
 A implementação genérica `MongodbRepository` centraliza operações comuns de persistência. Schemas,
 mappers e repositórios concretos ficam dentro de `src/infrastructure/database/mongodb`.
+
+## Eventos
+
+Eventos de domínio existem nos aggregates que já modelam fatos relevantes. O adapter
+`EventDispatcherAdapter` publica eventos via `@nestjs/event-emitter`. No fluxo atual, autenticação
+e chat publicam eventos; não há handlers registrados.
 
 ## Configuração
 
@@ -107,13 +129,13 @@ Use `.env.example` como referência das variáveis necessárias para ambiente lo
 Instale as dependências:
 
 ```bash
-yarn install
+pnpm install
 ```
 
 Suba o MongoDB local em Docker:
 
 ```bash
-yarn docker:mongo:up
+pnpm docker:up
 ```
 
 O `.env` local deve apontar para o Mongo publicado na máquina:
@@ -126,26 +148,27 @@ MONGODB_DATABASE_NAME=bbrain
 Compile o projeto:
 
 ```bash
-yarn build
+pnpm build
 ```
 
 Suba em modo local:
 
 ```bash
-yarn start:local
+pnpm start:local
 ```
 
 ## Scripts
 
-- `yarn build`: compila a aplicação NestJS.
-- `yarn start`: inicia a aplicação.
-- `yarn start:dev`: inicia com watch mode.
-- `yarn start:prod`: executa o build gerado em `dist/main`.
-- `yarn start:local`: limpa `dist`, carrega `.env`, compila e sobe em watch mode.
-- `yarn docker:mongo:up`: sobe o MongoDB local em Docker.
-- `yarn docker:mongo:down`: para os containers locais do compose.
-- `yarn docker:mongo:logs`: acompanha os logs do MongoDB local.
-- `yarn format`: aplica Prettier nos arquivos TypeScript e Markdown.
+- `pnpm build`: compila a aplicação NestJS.
+- Não há script separado de typecheck; `pnpm build` é a validação TypeScript disponível.
+- `pnpm start`: inicia a aplicação.
+- `pnpm start:dev`: inicia com watch mode.
+- `pnpm start:prod`: executa o build gerado em `dist/main`.
+- `pnpm start:local`: limpa `dist`, carrega `.env`, compila e sobe em watch mode.
+- `pnpm docker:up`: sobe o MongoDB local em Docker.
+- `pnpm docker:down`: para os containers locais do compose.
+- `pnpm docker:logs`: acompanha os logs do MongoDB local.
+- `pnpm format`: aplica Prettier nos arquivos TypeScript e Markdown.
 # Stripe webhook
 
 Em producao, crie um webhook da Stripe apontando para `https://api.bbrain.com/webhooks/stripe`.

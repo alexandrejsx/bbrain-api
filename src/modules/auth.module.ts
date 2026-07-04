@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
 import { AuthController } from '../controllers/auth.controller';
+import type { EventDispatcher } from '../domain/core/event-dispatcher';
 import { ReflectiveProfileRepository } from '../domain/conversation/repositories/reflective-profile.repository';
-import { EventDispatcherAdapter } from '../domain/events/event-dispatcher.adapter';
 import { UserRepository } from '../domain/users/repositories/user.repository';
+import { JwtAuthGuard } from '../infrastructure/http/guards/jwt-auth.guard';
 import { JwtTokenService } from '../shared/services/jwt-token.service';
 import { EmailService } from '../shared/services/email.service';
 import { PasswordHashService } from '../shared/services/password-hash.service';
@@ -15,23 +16,22 @@ import { DeactivateUserAccountUseCase } from '../use-cases/auth/deactivate-user-
 import { LoginUserUseCase } from '../use-cases/auth/login-user.use-case';
 import { RequestPasswordResetUseCase } from '../use-cases/auth/request-password-reset.use-case';
 import { RegisterUserUseCase } from '../use-cases/auth/register-user.use-case';
-import { JwtAuthGuard } from '../infrastructure/http/guards/jwt-auth.guard';
+import { ConversationMessageHistoryPort } from '../use-cases/conversation/ports/conversation-message-history.port';
+import { ConversationContextModule } from './conversation-context.module';
 import { EventsModule } from './events.module';
 import {
-  AI_CONTEXT_MESSAGES_REPOSITORY,
+  CONVERSATION_MESSAGE_HISTORY_REPOSITORY,
   EVENT_DISPATCHER,
   REFLECTIVE_PROFILES_REPOSITORY,
   USERS_REPOSITORY
 } from './tokens';
 import { UsersModule } from './users.module';
-import { AIContextModule } from './ai-context/ai-context.module';
-import { AIContextMessageRepository } from './ai-context/ai-context-message.repository';
 
 @Module({
   imports: [
     UsersModule,
     EventsModule,
-    AIContextModule,
+    ConversationContextModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService): JwtModuleOptions => {
@@ -59,24 +59,20 @@ import { AIContextMessageRepository } from './ai-context/ai-context-message.repo
         configService: ConfigService,
         userRepository: UserRepository,
         reflectiveProfileRepository: ReflectiveProfileRepository,
-        aiContextMessageRepository: AIContextMessageRepository
+        conversationMessageHistory: ConversationMessageHistoryPort
       ) =>
         new AccountLifecycleService(
           configService,
           userRepository,
           reflectiveProfileRepository,
-          aiContextMessageRepository
+          conversationMessageHistory
         ),
       inject: [
         ConfigService,
         USERS_REPOSITORY,
         REFLECTIVE_PROFILES_REPOSITORY,
-        AI_CONTEXT_MESSAGES_REPOSITORY
+        CONVERSATION_MESSAGE_HISTORY_REPOSITORY
       ]
-    },
-    {
-      provide: EVENT_DISPATCHER,
-      useExisting: EventDispatcherAdapter
     },
     {
       provide: RegisterUserUseCase,
@@ -84,7 +80,7 @@ import { AIContextMessageRepository } from './ai-context/ai-context-message.repo
         userRepository: UserRepository,
         passwordHashService: PasswordHashService,
         jwtTokenService: JwtTokenService,
-        eventDispatcher: EventDispatcherAdapter
+        eventDispatcher: EventDispatcher
       ) => {
         return new RegisterUserUseCase(
           userRepository,
@@ -102,7 +98,7 @@ import { AIContextMessageRepository } from './ai-context/ai-context-message.repo
         reflectiveProfileRepository: ReflectiveProfileRepository,
         passwordHashService: PasswordHashService,
         jwtTokenService: JwtTokenService,
-        eventDispatcher: EventDispatcherAdapter,
+        eventDispatcher: EventDispatcher,
         accountLifecycleService: AccountLifecycleService
       ) => {
         return new LoginUserUseCase(

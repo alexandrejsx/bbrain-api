@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { AIContextMessage } from '../../../../modules/ai-context/ai-context.types';
+import type { RecentConversationMessage } from '../../../../use-cases/conversation/conversation-agent-context';
 import type { ConversationMessageMongo } from '../schemas/conversation-message.schema';
 
 type ConversationMessagePersistenceInput = {
@@ -22,7 +22,7 @@ export class MongoConversationMessageMapper {
     };
   }
 
-  static toDomain(raw: ConversationMessageMongo): AIContextMessage {
+  static toRecentConversationMessage(raw: ConversationMessageMongo): RecentConversationMessage {
     return {
       role: raw.role,
       content: raw.content

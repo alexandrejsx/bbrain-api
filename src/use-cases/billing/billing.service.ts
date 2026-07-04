@@ -1,5 +1,4 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import Stripe from 'stripe';
 import { PaymentOrder } from '../../domain/billing/entities/payment-order.entity';
 import { ProviderEvent } from '../../domain/billing/entities/provider-event.entity';
 import { UserSubscription } from '../../domain/billing/entities/user-subscription.entity';
@@ -19,8 +18,12 @@ import {
 import { User } from '../../domain/users/entities/user.entity';
 import { UserRepository } from '../../domain/users/repositories/user.repository';
 import { UsageService } from '../../domain/usage/services/usage.service';
-import { StripePaymentProvider } from '../../infrastructure/payments/stripe/stripe-payment.provider';
-import { AsaasPixProvider } from '../../infrastructure/payments/asaas/asaas-pix.provider';
+import {
+  AsaasPixPaymentPort,
+  StripePaymentPort,
+  StripeSubscriptionSnapshot,
+  StripeWebhookEvent
+} from './ports/payment-provider.port';
 import { PlanChangeCalculatorService } from './plan-change-calculator.service';
 import { PlansService } from '../plans/plans.service';
 
@@ -71,8 +74,8 @@ export class BillingService {
     private readonly plansService: PlansService,
     private readonly planChangeCalculator: PlanChangeCalculatorService,
     private readonly usageService: UsageService,
-    private readonly stripeProvider: StripePaymentProvider,
-    private readonly asaasProvider: AsaasPixProvider
+    private readonly stripeProvider: StripePaymentPort,
+    private readonly asaasProvider: AsaasPixPaymentPort
   ) {}
 
   async getBillingSummary(userId: string): Promise<BillingSummary> {
@@ -185,7 +188,7 @@ export class BillingService {
       throw new BadRequestException('Stripe signature missing');
     }
 
-    let event: Stripe.Event;
+    let event: StripeWebhookEvent;
 
     try {
       event = this.stripeProvider.constructWebhookEvent(rawBody, stripeSignature);
@@ -363,23 +366,33 @@ export class BillingService {
     };
   }
 
-  private async processStripeEvent(event: Stripe.Event): Promise<void> {
+  private async processStripeEvent(event: StripeWebhookEvent): Promise<void> {
     switch (event.type) {
       case 'checkout.session.completed':
-        await this.handleCheckoutSessionCompleted(event.data.object);
+        if (event.data.kind === 'checkout.session.completed') {
+          await this.handleCheckoutSessionCompleted(event.data);
+        }
         return;
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
-        await this.syncStripeSubscription(event.data.object);
+        if (event.data.kind === 'subscription') {
+          await this.syncStripeSubscription(event.data.subscription);
+        }
         return;
       case 'customer.subscription.deleted':
-        await this.handleSubscriptionDeleted(event.data.object);
+        if (event.data.kind === 'subscription') {
+          await this.handleSubscriptionDeleted(event.data.subscription);
+        }
         return;
       case 'invoice.paid':
-        await this.handleInvoicePaid(event.data.object);
+        if (event.data.kind === 'invoice') {
+          await this.handleInvoicePaid(event.data.subscriptionId);
+        }
         return;
       case 'invoice.payment_failed':
-        await this.handleInvoicePaymentFailed(event.data.object);
+        if (event.data.kind === 'invoice') {
+          await this.handleInvoicePaymentFailed(event.data.subscriptionId);
+        }
         return;
       default:
         return;
@@ -441,23 +454,23 @@ export class BillingService {
     await this.applyPaidAsaasOrder(order, now);
   }
 
-  private async handleCheckoutSessionCompleted(session: Stripe.Checkout.Session): Promise<void> {
-    const stripeSubscriptionId = getStripeId(session.subscription);
-
-    if (!stripeSubscriptionId) {
+  private async handleCheckoutSessionCompleted(session: {
+    subscriptionId?: string;
+    metadata: Record<string, string>;
+  }): Promise<void> {
+    if (!session.subscriptionId) {
       return;
     }
 
-    const subscription = await this.stripeProvider.retrieveSubscription(stripeSubscriptionId);
-    await this.syncStripeSubscription(subscription, session.metadata ?? undefined);
+    const subscription = await this.stripeProvider.retrieveSubscription(session.subscriptionId);
+    await this.syncStripeSubscription(subscription, session.metadata);
   }
 
   private async syncStripeSubscription(
-    stripeSubscription: Stripe.Subscription,
-    fallbackMetadata?: Stripe.Metadata | null
+    stripeSubscription: StripeSubscriptionSnapshot,
+    fallbackMetadata?: Record<string, string>
   ): Promise<void> {
-    const price = stripeSubscription.items.data[0]?.price;
-    const priceId = price?.id;
+    const priceId = stripeSubscription.priceId;
 
     if (!priceId) {
       return;
@@ -479,13 +492,13 @@ export class BillingService {
 
     const user = await this.getUser(userId);
     const status = mapStripeSubscriptionStatus(stripeSubscription.status);
-    const currentPeriodStart = toDate((stripeSubscription as any).current_period_start);
-    const currentPeriodEnd = toDate((stripeSubscription as any).current_period_end);
-    const stripeCustomerId = getStripeId(stripeSubscription.customer);
+    const currentPeriodStart = stripeSubscription.currentPeriodStart;
+    const currentPeriodEnd = stripeSubscription.currentPeriodEnd;
+    const stripeCustomerId = stripeSubscription.customerId;
     const existingSubscription = await this.subscriptionRepository.findByStripeSubscriptionId(
       stripeSubscription.id
     );
-    const latestInvoiceId = getStripeId((stripeSubscription as any).latest_invoice);
+    const latestInvoiceId = stripeSubscription.latestInvoiceId;
     const subscription =
       existingSubscription ??
       UserSubscription.create({
@@ -500,7 +513,7 @@ export class BillingService {
         status,
         currentPeriodStart,
         currentPeriodEnd,
-        cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end
+        cancelAtPeriodEnd: stripeSubscription.cancelAtPeriodEnd
       });
 
     subscription.sync({
@@ -514,9 +527,9 @@ export class BillingService {
       status,
       currentPeriodStart,
       currentPeriodEnd,
-      cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
-      cancelAt: toDate(stripeSubscription.cancel_at),
-      canceledAt: toDate(stripeSubscription.canceled_at),
+      cancelAtPeriodEnd: stripeSubscription.cancelAtPeriodEnd,
+      cancelAt: stripeSubscription.cancelAt,
+      canceledAt: stripeSubscription.canceledAt,
       latestInvoiceId
     });
     await this.subscriptionRepository.save(subscription);
@@ -529,7 +542,9 @@ export class BillingService {
     await this.userRepository.save(user);
   }
 
-  private async handleSubscriptionDeleted(stripeSubscription: Stripe.Subscription): Promise<void> {
+  private async handleSubscriptionDeleted(
+    stripeSubscription: StripeSubscriptionSnapshot
+  ): Promise<void> {
     const existingSubscription = await this.subscriptionRepository.findByStripeSubscriptionId(
       stripeSubscription.id
     );
@@ -540,7 +555,7 @@ export class BillingService {
 
     existingSubscription.sync({
       status: SubscriptionStatus.CANCELED,
-      canceledAt: toDate(stripeSubscription.canceled_at) ?? new Date(),
+      canceledAt: stripeSubscription.canceledAt ?? new Date(),
       cancelAtPeriodEnd: false
     });
     await this.subscriptionRepository.save(existingSubscription);
@@ -550,9 +565,7 @@ export class BillingService {
     await this.userRepository.save(user);
   }
 
-  private async handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
-    const stripeSubscriptionId = getStripeId((invoice as any).subscription);
-
+  private async handleInvoicePaid(stripeSubscriptionId?: string): Promise<void> {
     if (!stripeSubscriptionId) {
       return;
     }
@@ -561,9 +574,7 @@ export class BillingService {
     await this.syncStripeSubscription(subscription);
   }
 
-  private async handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void> {
-    const stripeSubscriptionId = getStripeId((invoice as any).subscription);
-
+  private async handleInvoicePaymentFailed(stripeSubscriptionId?: string): Promise<void> {
     if (!stripeSubscriptionId) {
       return;
     }
@@ -722,7 +733,7 @@ export class BillingService {
   }
 }
 
-function mapStripeSubscriptionStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
+function mapStripeSubscriptionStatus(status: string): SubscriptionStatus {
   const normalizedStatus = status as SubscriptionStatus;
 
   if (Object.values(SubscriptionStatus).includes(normalizedStatus)) {
@@ -730,22 +741,6 @@ function mapStripeSubscriptionStatus(status: Stripe.Subscription.Status): Subscr
   }
 
   return SubscriptionStatus.NONE;
-}
-
-function getStripeId(value: unknown): string | undefined {
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  if (value && typeof value === 'object' && 'id' in value && typeof value.id === 'string') {
-    return value.id;
-  }
-
-  return undefined;
-}
-
-function toDate(timestamp?: number | null): Date | undefined {
-  return typeof timestamp === 'number' ? new Date(timestamp * 1000) : undefined;
 }
 
 function getAsaasAccessEnd(accessDays: number, accessStart: Date): Date {

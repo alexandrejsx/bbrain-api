@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ReflectiveProfileRepository } from '../../domain/conversation/repositories/reflective-profile.repository';
 import { UserRepository } from '../../domain/users/repositories/user.repository';
-import { AIContextMessageRepository } from '../../modules/ai-context/ai-context-message.repository';
+import { ConversationMessageHistoryPort } from '../conversation/ports/conversation-message-history.port';
 
 @Injectable()
 export class AccountLifecycleService implements OnModuleInit, OnModuleDestroy {
@@ -12,7 +12,7 @@ export class AccountLifecycleService implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly userRepository: UserRepository,
     private readonly reflectiveProfileRepository: ReflectiveProfileRepository,
-    private readonly aiContextMessageRepository: AIContextMessageRepository
+    private readonly conversationMessageHistory: ConversationMessageHistoryPort
   ) {}
 
   onModuleInit(): void {
@@ -50,7 +50,7 @@ export class AccountLifecycleService implements OnModuleInit, OnModuleDestroy {
   async purgeUserAccount(userId: string): Promise<void> {
     await Promise.all([
       this.reflectiveProfileRepository.deleteByUserId(userId),
-      this.aiContextMessageRepository.deleteByUserId(userId)
+      this.conversationMessageHistory.deleteByUserId(userId)
     ]);
 
     await this.userRepository.delete(userId);

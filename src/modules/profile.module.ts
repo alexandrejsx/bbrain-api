@@ -3,13 +3,13 @@ import { ProfileController } from '../controllers/profile.controller';
 import { ReflectiveProfileRepository } from '../domain/conversation/repositories/reflective-profile.repository';
 import { UserRepository } from '../domain/users/repositories/user.repository';
 import { UpdateUserProfileUseCase } from '../use-cases/conversation/update-user-profile.use-case';
-import { AIContextModule } from './ai-context/ai-context.module';
 import { AuthModule } from './auth.module';
+import { ConversationContextModule } from './conversation-context.module';
 import { REFLECTIVE_PROFILES_REPOSITORY, USERS_REPOSITORY } from './tokens';
 import { UsersModule } from './users.module';
 
 @Module({
-  imports: [AuthModule, AIContextModule, UsersModule],
+  imports: [AuthModule, ConversationContextModule, UsersModule],
   controllers: [ProfileController],
   providers: [
     {

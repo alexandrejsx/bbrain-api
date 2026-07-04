@@ -2,21 +2,12 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import config from './config';
-import { AgentsModule } from './modules/agents.module';
 import { AuthModule } from './modules/auth.module';
-import { CheckInModule } from './modules/check-in.module';
 import { ConversationModule } from './modules/conversation.module';
 import { EventsModule } from './modules/events.module';
-import { JournalModule } from './modules/journal.module';
-import { MemoryModule } from './modules/memory.module';
 import { MongodbModule } from './modules/mongodb.module';
-import { PatternAnalysisModule } from './modules/pattern-analysis.module';
 import { PlansModule } from './modules/plans.module';
 import { ProfileModule } from './modules/profile.module';
-import { RiskAssessmentModule } from './modules/risk-assessment.module';
-import { SafetyModule } from './modules/safety.module';
-import { SummaryModule } from './modules/summary.module';
-import { SupportPlanModule } from './modules/support-plan.module';
 import { UsersModule } from './modules/users.module';
 
 @Module({
@@ -33,16 +24,7 @@ import { UsersModule } from './modules/users.module';
     AuthModule,
     ConversationModule,
     PlansModule,
-    ProfileModule,
-    MemoryModule,
-    CheckInModule,
-    JournalModule,
-    PatternAnalysisModule,
-    RiskAssessmentModule,
-    SummaryModule,
-    SupportPlanModule,
-    SafetyModule,
-    AgentsModule
+    ProfileModule
   ]
 })
 export class AppModule {}

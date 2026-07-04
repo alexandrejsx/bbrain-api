@@ -1,7 +1,7 @@
 FROM node:20
 
 COPY ["dist", "./dist"]
-COPY ["package.json", "yarn.lock", "./"]
+COPY ["package.json", "pnpm-lock.yaml", "./"]
 
-RUN npm install -g yarn
-RUN yarn install --production=true
+RUN corepack enable
+RUN pnpm install --prod --frozen-lockfile

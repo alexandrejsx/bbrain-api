@@ -5,11 +5,9 @@ import {
   ChatAgentRequest,
   ChatAgentResponse
 } from '../../use-cases/conversation/chat-agent.port';
-import {
-  buildChatMessages,
-  CHAT_RESPONSE_SCHEMA,
-  parseChatAgentResponse
-} from '../chat/chat-agent-support';
+import { buildChatMessages } from '../chat/prompt-rendering/bbrain-chat-prompt.renderer';
+import { CHAT_RESPONSE_SCHEMA } from '../chat/provider-schemas/chat-response.schema';
+import { parseChatAgentResponse } from '../chat/structured-output/chat-agent-response.parser';
 import { describeProviderError, describeProviderHttpError } from '../chat/ai-provider-error';
 import {
   estimateLlmUsageFromText,

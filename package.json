@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "API backend do BBrain para acompanhamento psicológico digital com IA.",
+  "packageManager": "pnpm@10.34.1",
   "license": "UNLICENSED",
   "scripts": {
     "nest": "nest",
@@ -12,7 +13,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
-    "start:local": "yarn rimraf dist && yarn env-cmd -f .env yarn build && cross-env RUN_LOCALLY=true TZ=UTC yarn env-cmd -f .env yarn nest start --watch",
+    "start:local": "rimraf dist && env-cmd -f .env pnpm run build && cross-env RUN_LOCALLY=true TZ=UTC env-cmd -f .env nest start --watch",
     "docker:up": "docker compose up -d mongo",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f mongo",

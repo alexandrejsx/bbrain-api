@@ -36,6 +36,11 @@ class BasicInfoDto {
   @IsString()
   @MaxLength(32)
   language?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2)
+  nationality?: string;
 }
 
 class GoalsDto {

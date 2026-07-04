@@ -43,6 +43,17 @@ export class UpdateUserProfileUseCase {
 
     const now = new Date();
     const profileSnapshot = normalizeUserProfileSnapshot(user, input.profile);
+
+    if (profileSnapshot.profileCompleted) {
+      if (!profileSnapshot.basicInfo.birthDate) {
+        throw new BadRequestException('Birth date is required');
+      }
+
+      if (!profileSnapshot.basicInfo.sex) {
+        throw new BadRequestException('Sex is required');
+      }
+    }
+
     const profile =
       (await this.profileRepository.findByUserId(input.userId)) ??
       ReflectiveProfile.create(input.userId);

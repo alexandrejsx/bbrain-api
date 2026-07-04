@@ -96,9 +96,10 @@ export function createDefaultUserProfileSnapshot(
     profileCompleted: false,
     basicInfo: {
       sex: normalizeUserSex(initialBasicInfo.sex),
+      nationality: trimOptional(initialBasicInfo.nationality),
       preferredName: trimOptional(initialBasicInfo.preferredName),
       birthDate: normalizeOptionalDate(initialBasicInfo.birthDate),
-      language: 'pt-BR'
+      language: trimOptional(initialBasicInfo.language) ?? 'pt-BR'
     },
     goals: {
       mainGoals: []
@@ -124,6 +125,7 @@ export function normalizeUserProfileSnapshot(
     basicInfo: {
       ...fallback.basicInfo,
       ...profile?.basicInfo,
+      nationality: trimOptional(profile?.basicInfo?.nationality) ?? fallback.basicInfo.nationality,
       preferredName: trimOptional(profile?.basicInfo?.preferredName),
       birthDate: normalizeOptionalDate(
         profile?.basicInfo?.birthDate ?? fallback.basicInfo.birthDate

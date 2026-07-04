@@ -22,6 +22,7 @@ export interface UserProfileSnapshot {
     birthDate?: Date;
     sex?: UserSex;
     language?: string;
+    nationality?: string;
   };
   goals: {
     mainGoals: string[];

@@ -2,13 +2,18 @@ import {
   IsBoolean,
   IsEmail,
   IsEnum,
-  IsOptional,
+  IsIn,
   IsString,
+  Matches,
+  IsOptional,
   MaxLength,
-  MinLength
+  MinLength,
+  IsNotEmpty
 } from 'class-validator';
 import { PlanType } from '../../domain/plans/plan-definition';
 import { UserSex } from '../../domain/users/entities/user-profile.types';
+
+const supportedLanguages = ['pt-BR', 'en-US', 'es-ES'] as const;
 
 export class RegisterDto {
   @IsString()
@@ -21,14 +26,23 @@ export class RegisterDto {
   @MinLength(8)
   password: string;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(32)
-  phone?: string;
+  phone: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^[A-Za-z]{2}$/)
+  nationality: string;
 
   @IsOptional()
   @IsEnum(UserSex)
   sex?: UserSex;
+
+  @IsString()
+  @IsIn(supportedLanguages)
+  language: (typeof supportedLanguages)[number];
 
   @IsOptional()
   @IsString()

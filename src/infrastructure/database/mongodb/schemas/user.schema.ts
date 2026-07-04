@@ -19,6 +19,7 @@ export interface UserProfileMongo {
     preferred_name?: string;
     birth_date?: Date;
     sex?: UserSex;
+    nationality?: string;
     language?: string;
   };
   goals: {
@@ -60,6 +61,7 @@ const userProfileSchemaDefinition = {
     preferred_name: { type: String, required: false },
     birth_date: { type: Date, required: false },
     sex: { type: String, enum: Object.values(UserSexEnum), required: false },
+    nationality: { type: String, required: false },
     language: { type: String, required: false }
   },
   goals: {

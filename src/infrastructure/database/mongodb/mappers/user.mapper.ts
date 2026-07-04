@@ -23,6 +23,7 @@ function toProfilePersistence(profile?: UserProfileSnapshot): UserProfileMongo |
       preferred_name: profile.basicInfo.preferredName,
       birth_date: profile.basicInfo.birthDate,
       sex: profile.basicInfo.sex,
+      nationality: profile.basicInfo.nationality,
       language: profile.basicInfo.language
     },
     goals: {
@@ -68,6 +69,7 @@ function toProfileDomain(profile?: UserProfileMongo): UserProfileSnapshot | unde
       preferredName: profile.basic_info?.preferred_name,
       birthDate: profile.basic_info?.birth_date,
       sex: profile.basic_info?.sex,
+      nationality: profile.basic_info?.nationality,
       language: profile.basic_info?.language
     },
     goals: {

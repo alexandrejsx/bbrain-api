@@ -14,11 +14,15 @@ import { createDefaultUserProfileSnapshot } from '../profile/user-profile-snapsh
 import { UserSex } from '../../domain/users/entities/user-profile.types';
 import { PlanType } from '../../domain/plans/plan-definition';
 
+const supportedLanguages = new Set(['pt-BR', 'en-US', 'es-ES']);
+
 export interface RegisterUserInput {
   name: string;
   email: string;
   password: string;
-  phone?: string;
+  phone: string;
+  nationality: string;
+  language: string;
   sex?: UserSex;
   timezone?: string;
   plan?: PlanType;
@@ -39,6 +43,18 @@ export class RegisterUserUseCase implements UseCase<RegisterUserInput, AuthRespo
       throw new BadRequestException('Terms must be accepted');
     }
 
+    if (!input.nationality?.trim()) {
+      throw new BadRequestException('Nationality is required');
+    }
+
+    if (!/^[A-Za-z]{2}$/.test(input.nationality)) {
+      throw new BadRequestException('Nationality is invalid');
+    }
+
+    if (!supportedLanguages.has(input.language)) {
+      throw new BadRequestException('Language is invalid');
+    }
+
     const email = new Email(input.email);
     const exists = await this.userRepository.findByEmail(email.value);
 
@@ -49,6 +65,10 @@ export class RegisterUserUseCase implements UseCase<RegisterUserInput, AuthRespo
     const password = new Password(input.password);
     const passwordHash = await this.passwordHashService.hash(password.value);
     const acceptedTermsAt = new Date();
+    if (!input.phone?.trim()) {
+      throw new BadRequestException('Phone is required');
+    }
+
     const phone = normalizeInternationalPhoneNumber(input.phone);
 
     if (input.plan !== undefined && input.plan !== PlanType.FREE) {
@@ -65,7 +85,11 @@ export class RegisterUserUseCase implements UseCase<RegisterUserInput, AuthRespo
       acceptedTermsAt
     });
 
-    const profile = createDefaultUserProfileSnapshot({ sex: input.sex });
+    const profile = createDefaultUserProfileSnapshot({
+      sex: input.sex,
+      nationality: input.nationality,
+      language: input.language
+    });
     user.updateProfile(profile);
 
     await this.userRepository.save(user);

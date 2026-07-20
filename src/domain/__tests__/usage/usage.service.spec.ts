@@ -1,5 +1,9 @@
 import { UserDailyUsage } from '../../usage/entities/user-daily-usage.entity';
-import { UserDailyUsageRepository } from '../../usage/repositories/user-daily-usage.repository';
+import {
+  AtomicLlmUsageRegistration,
+  AtomicMessageReservation,
+  UserDailyUsageRepository
+} from '../../usage/repositories/user-daily-usage.repository';
 import { UsageLimitError, UsageService } from '../../usage/services/usage.service';
 import { User } from '../../users/entities/user.entity';
 import { UserRepository } from '../../users/repositories/user.repository';
@@ -54,6 +58,68 @@ class InMemoryDailyUsageRepository implements UserDailyUsageRepository {
     this.usages.set(`${usage.userId}:${usage.dateKey}`, usage);
     return Promise.resolve();
   }
+
+  updatePlanAtomic(
+    usageId: string,
+    plan: PlanType,
+    updatedAt: Date
+  ): Promise<UserDailyUsage | null> {
+    const usage = [...this.usages.values()].find((item) => item.id.value === usageId);
+    if (!usage) return Promise.resolve(null);
+    usage.updatePlan(plan, updatedAt);
+    return Promise.resolve(usage);
+  }
+
+  registerBlockedAtomic(
+    usageId: string,
+    lockPeriodEnd: Date | undefined,
+    updatedAt: Date
+  ): Promise<UserDailyUsage | null> {
+    const usage = [...this.usages.values()].find((item) => item.id.value === usageId);
+    if (!usage) return Promise.resolve(null);
+    usage.incrementBlocked(updatedAt);
+    if (lockPeriodEnd) usage.lockUntil(lockPeriodEnd, updatedAt);
+    return Promise.resolve(usage);
+  }
+
+  registerLlmUsageAtomic(input: AtomicLlmUsageRegistration): Promise<UserDailyUsage> {
+    const usage = [...this.usages.values()].find((item) => item.id.value === input.usageId);
+    if (!usage) throw new Error('Usage not found');
+
+    if (input.incrementMessageCount) {
+      usage.registerLlmUsage(input.usage, input.updatedAt);
+    } else {
+      usage.registerAuxiliaryLlmUsage(input.usage, input.updatedAt);
+    }
+    if (
+      usage.totalTokens >= input.dailyTokenLimit ||
+      usage.messageCount >= input.dailyMessageLimit
+    ) {
+      usage.lockUntil(input.lockPeriodEnd, input.updatedAt);
+    }
+    this.usages.set(`${usage.userId}:${usage.dateKey}`, usage);
+    return Promise.resolve(usage);
+  }
+
+  reserveMessageAtomic(input: AtomicMessageReservation): Promise<UserDailyUsage | null> {
+    const usage = [...this.usages.values()].find((item) => item.id.value === input.usageId);
+    if (
+      !usage ||
+      usage.totalTokens >= input.dailyTokenLimit ||
+      usage.messageCount >= input.dailyMessageLimit
+    ) {
+      return Promise.resolve(null);
+    }
+
+    usage.registerLlmUsage({ inputTokens: 0, outputTokens: 0, totalTokens: 0 }, input.updatedAt);
+    return Promise.resolve(usage);
+  }
+
+  releaseMessageAtomic(usageId: string, updatedAt: Date): Promise<void> {
+    const usage = [...this.usages.values()].find((item) => item.id.value === usageId);
+    usage?.releaseMessageReservation(updatedAt);
+    return Promise.resolve();
+  }
 }
 
 function createUser(plan: PlanType = PlanType.FREE): User {
@@ -84,7 +150,38 @@ describe('UsageService', () => {
   });
 
   it('allows a user inside the daily limits to send a message', async () => {
-    await expect(service.assertCanSendMessage(user.id.value, 'Oi')).resolves.toBeUndefined();
+    await expect(service.assertCanSendMessage(user.id.value, 'Oi')).resolves.toMatchObject({
+      usageId: expect.any(String)
+    });
+  });
+
+  it('reserves message capacity atomically under concurrent requests', async () => {
+    await service.getCurrentUsage(user.id.value);
+
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 25 }, () => service.assertCanSendMessage(user.id.value, 'Oi'))
+    );
+
+    expect(attempts.filter((attempt) => attempt.status === 'fulfilled')).toHaveLength(20);
+    expect(attempts.filter((attempt) => attempt.status === 'rejected')).toHaveLength(5);
+    expect((await service.getCurrentUsage(user.id.value)).messageCount).toBe(20);
+  });
+
+  it('registers reserved tokens without incrementing the reserved message twice', async () => {
+    const reservation = await service.assertCanSendMessage(user.id.value, 'Oi');
+
+    await service.registerReservedLlmUsage(reservation, {
+      inputTokens: 10,
+      outputTokens: 12,
+      totalTokens: 22
+    });
+
+    expect(await service.getUsageSummary(user.id.value)).toMatchObject({
+      inputTokens: 10,
+      outputTokens: 12,
+      totalTokens: 22,
+      messageCount: 1
+    });
   });
 
   it('blocks a user who reached the daily message limit', async () => {
@@ -132,6 +229,28 @@ describe('UsageService', () => {
       inputTokens: 10,
       outputTokens: 12,
       totalTokens: 22,
+      messageCount: 1
+    });
+  });
+
+  it('tracks auxiliary LLM tokens without consuming another user message', async () => {
+    await service.registerLlmUsage(user.id.value, {
+      inputTokens: 10,
+      outputTokens: 12,
+      totalTokens: 22
+    });
+    await service.registerAuxiliaryLlmUsage(user.id.value, {
+      inputTokens: 4,
+      outputTokens: 2,
+      totalTokens: 6
+    });
+
+    const summary = await service.getUsageSummary(user.id.value);
+
+    expect(summary).toMatchObject({
+      inputTokens: 14,
+      outputTokens: 14,
+      totalTokens: 28,
       messageCount: 1
     });
   });

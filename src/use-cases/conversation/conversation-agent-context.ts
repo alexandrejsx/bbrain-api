@@ -1,14 +1,9 @@
 import { ReflectiveProfile } from '../../domain/conversation/entities/reflective-profile.entity';
-
-export type RecentConversationMessageRole = 'user' | 'assistant';
-
-export interface RecentConversationMessage {
-  role: RecentConversationMessageRole;
-  content: string;
-}
+import { ConversationStateSnapshot } from '../../domain/conversation/entities/conversation-state.entity';
+import { ConversationState } from '../../domain/conversation/entities/conversation-state.entity';
 
 export interface UserIdentityConversationContext {
-  displayName: string;
+  displayName?: string;
   preferredLanguage?: string;
 }
 
@@ -34,12 +29,21 @@ export interface ConversationAgentContext {
   userIdentityContext?: UserIdentityConversationContext;
   userProfileSummary: UserProfileContextSummary;
   conversationStyle?: ConversationStyleContext;
-  conversationSummary?: string;
-  recentMessages: RecentConversationMessage[];
+  conversationState?: ConversationStateSnapshot;
+}
+
+export interface ConversationDataPolicy {
+  timezone: string;
+  allowPersonalization: boolean;
+  allowMemory: boolean;
+  allowMoodInsights: boolean;
+  allowSensitiveDataStorage: boolean;
 }
 
 export interface ConversationAgentContextBuildResult {
   profileConfigured: boolean;
   context: ConversationAgentContext;
+  dataPolicy: ConversationDataPolicy;
   sourceProfile?: ReflectiveProfile;
+  sourceConversationState?: ConversationState;
 }

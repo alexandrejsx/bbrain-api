@@ -27,6 +27,7 @@ interface GeminiContent {
 }
 
 interface GeminiGenerateContentRequest {
+  store: false;
   systemInstruction: GeminiContent;
   contents: GeminiContent[];
   generationConfig: {
@@ -98,6 +99,7 @@ export class GeminiChatAgent implements ChatAgent {
     }));
 
     const payload: GeminiGenerateContentRequest = {
+      store: false,
       systemInstruction: {
         parts: [{ text: chatMessages[0].content }]
       },

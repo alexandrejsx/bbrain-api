@@ -94,8 +94,8 @@ function toProfileDomain(profile?: UserProfileMongo): UserProfileSnapshot | unde
     privacySettings: {
       allowPersonalization: profile.privacy_settings?.allow_personalization ?? true,
       allowMemory: profile.privacy_settings?.allow_memory ?? true,
-      allowMoodInsights: profile.privacy_settings?.allow_mood_insights ?? true,
-      allowSensitiveDataStorage: profile.privacy_settings?.allow_sensitive_data_storage ?? true
+      allowMoodInsights: profile.privacy_settings?.allow_mood_insights ?? false,
+      allowSensitiveDataStorage: profile.privacy_settings?.allow_sensitive_data_storage ?? false
     }
   };
 }

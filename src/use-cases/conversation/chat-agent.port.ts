@@ -1,25 +1,17 @@
 import { ConversationScopeStatus } from '../../domain/conversation/services/conversation-scope-policy.service';
 import { LlmUsage } from '../../domain/usage/value-objects/llm-usage';
 import { ConversationAgentContext } from './conversation-agent-context';
+import { ProposedConversationState } from '../../domain/conversation/services/conversation-state-update-policy.service';
 
 export type ChatRiskLevel = 'none' | 'low' | 'medium' | 'high';
 
-export interface ChatProfileUpdate {
-  shouldUpdate: boolean;
-  currentContextSummary?: string;
-  recurringThemesToAdd?: string[];
-  emotionalPatternsToAdd?: string[];
-  routineNotesToAdd?: string[];
-  helpfulStrategiesToAdd?: string[];
-  unhelpfulStrategiesToAdd?: string[];
-  boundariesToAdd?: string[];
-}
+export type ChatConversationStateUpdate = ProposedConversationState;
 
 export interface ChatAgentResponse {
   reply: string;
   riskLevel: ChatRiskLevel;
   scopeStatus: ConversationScopeStatus;
-  profileUpdate: ChatProfileUpdate;
+  conversationStateUpdate: ChatConversationStateUpdate;
   usage: LlmUsage;
 }
 

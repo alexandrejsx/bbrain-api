@@ -109,8 +109,9 @@ export function createDefaultUserProfileSnapshot(
     privacySettings: {
       allowPersonalization: true,
       allowMemory: true,
-      allowMoodInsights: true,
-      allowSensitiveDataStorage: true
+      // Sensitive automatic derivations require an explicit user opt-in.
+      allowMoodInsights: false,
+      allowSensitiveDataStorage: false
     }
   };
 }

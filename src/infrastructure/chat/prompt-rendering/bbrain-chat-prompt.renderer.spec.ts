@@ -31,8 +31,7 @@ describe('bbrain chat prompt renderer', () => {
           displayName: 'Alex',
           preferredLanguage: 'pt-BR'
         },
-        userProfileSummary: {},
-        recentMessages: []
+        userProfileSummary: {}
       }
     });
 
@@ -53,8 +52,7 @@ describe('bbrain chat prompt renderer', () => {
       preferredLanguage: 'pt-BR',
       responseLanguage: 'pt-BR',
       context: {
-        userProfileSummary: {},
-        recentMessages: []
+        userProfileSummary: {}
       }
     });
 
@@ -73,37 +71,35 @@ describe('bbrain chat prompt renderer', () => {
 
     expect(message.content).toContain('SHORT_REPLY_CONTINUITY:');
     expect(message.content).toContain(
-      'Interpretar respostas curtas com base na última pergunta ou afirmação relevante do histórico recente.'
+      'Interpretar respostas curtas somente com base no conversationState estruturado e na mensagem atual.'
     );
     expect(message.content).toContain(
       'Não repetir a mesma pergunta quando o usuário já respondeu.'
     );
   });
 
-  it('includes recent messages in chronological order before the current user message', () => {
+  it('sends only structured state and the current user message, never transcript messages', () => {
     const messages = buildChatMessages({
       message: 'os dois',
       preferredLanguage: 'pt-BR',
       responseLanguage: 'pt-BR',
       context: {
         userProfileSummary: {},
-        recentMessages: [
-          {
-            role: 'assistant',
-            content: 'Voce sente que esse cansaco parece mais fisico ou emocional?'
-          },
-          { role: 'user', content: 'os dois' }
-        ]
+        conversationState: {
+          currentTopic: 'cansaço',
+          currentConcerns: [],
+          userNeeds: [],
+          supportContext: 'unknown',
+          safetyState: 'none',
+          pendingQuestionCode: 'clarification',
+          lastAssistantIntent: 'explore_impact'
+        }
       }
     });
 
-    expect(messages.slice(-3)).toEqual([
-      {
-        role: 'assistant',
-        content: 'Voce sente que esse cansaco parece mais fisico ou emocional?'
-      },
-      { role: 'user', content: 'os dois' },
-      { role: 'user', content: 'os dois' }
-    ]);
+    expect(messages).toHaveLength(3);
+    expect(messages[1].content).toContain('"pendingQuestionCode": "clarification"');
+    expect(messages[2]).toEqual({ role: 'user', content: 'os dois' });
+    expect(messages.some((message) => message.role === 'assistant')).toBe(false);
   });
 });

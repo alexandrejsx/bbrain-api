@@ -1,18 +1,32 @@
 import { ConversationScopeStatus } from '../../../domain/conversation/services/conversation-scope-policy.service';
 import {
   ChatAgentResponse,
-  ChatProfileUpdate,
+  ChatConversationStateUpdate,
   ChatRiskLevel
 } from '../../../use-cases/conversation/chat-agent.port';
+import {
+  CONVERSATION_ASSISTANT_INTENTS,
+  CONVERSATION_PENDING_QUESTION_CODES,
+  CONVERSATION_SAFETY_STATES,
+  CONVERSATION_SUPPORT_CONTEXTS
+} from '../../../domain/conversation/entities/conversation-state.entity';
 
 const RISK_LEVELS = new Set<ChatRiskLevel>(['none', 'low', 'medium', 'high']);
 const SCOPE_STATUSES = new Set<ConversationScopeStatus>(['in_scope', 'out_of_scope']);
+const TOP_LEVEL_KEYS = ['reply', 'riskLevel', 'scopeStatus', 'conversationStateUpdate'];
+const STATE_UPDATE_KEYS = [
+  'shouldUpdate',
+  'currentTopic',
+  'currentConcerns',
+  'userNeeds',
+  'supportContext',
+  'safetyState',
+  'pendingQuestionCode',
+  'lastAssistantIntent'
+];
 
 const toOptionalString = (value: unknown): string | undefined =>
   typeof value === 'string' ? value : undefined;
-
-const toStringArray = (value: unknown): string[] | undefined =>
-  Array.isArray(value) && value.every((item) => typeof item === 'string') ? value : undefined;
 
 const stripMarkdownFence = (value: string): string =>
   value
@@ -22,6 +36,16 @@ const stripMarkdownFence = (value: string): string =>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
+
+const hasOnlyKeys = (value: Record<string, unknown>, keys: readonly string[]): boolean => {
+  const allowed = new Set(keys);
+  return Object.keys(value).every((key) => allowed.has(key));
+};
+
+const isValidStateStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) &&
+  value.length <= 5 &&
+  value.every((item) => typeof item === 'string' && item.trim().length > 0 && item.length <= 100);
 
 const removeTrailingCommas = (value: string): string => {
   let result = '';
@@ -149,7 +173,10 @@ const extractJsonObjectCandidates = (value: string): string[] => {
 };
 
 const looksLikeStructuredChatResponse = (value: Record<string, unknown>): boolean =>
-  'reply' in value && 'riskLevel' in value && 'scopeStatus' in value && 'profileUpdate' in value;
+  'reply' in value &&
+  'riskLevel' in value &&
+  'scopeStatus' in value &&
+  'conversationStateUpdate' in value;
 
 const parseStructuredJson = (outputText: string, providerName: string): Record<string, unknown> => {
   const normalized = stripMarkdownFence(outputText);
@@ -190,8 +217,7 @@ const parseStructuredJson = (outputText: string, providerName: string): Record<s
       `${providerName} returned malformed JSON: top-level JSON value is not an object`
     );
   } catch (initialError) {
-    const detail = initialError instanceof Error ? initialError.message : 'unknown JSON error';
-    throw new Error(`${providerName} returned malformed JSON: ${detail}`, {
+    throw new Error(`${providerName} returned malformed JSON`, {
       cause: initialError
     });
   }
@@ -204,7 +230,8 @@ export function parseChatAgentResponse(
   const parsed = parseStructuredJson(outputText, providerName);
   const riskLevel = parsed.riskLevel;
   const scopeStatus = parsed.scopeStatus;
-  const profileUpdate = parsed.profileUpdate as Record<string, unknown> | undefined;
+  const stateUpdate = parsed.conversationStateUpdate as Record<string, unknown> | undefined;
+  const currentTopic = stateUpdate?.currentTopic;
 
   if (
     typeof parsed.reply !== 'string' ||
@@ -213,27 +240,50 @@ export function parseChatAgentResponse(
     !RISK_LEVELS.has(riskLevel as ChatRiskLevel) ||
     typeof scopeStatus !== 'string' ||
     !SCOPE_STATUSES.has(scopeStatus as ConversationScopeStatus) ||
-    !profileUpdate ||
-    typeof profileUpdate.shouldUpdate !== 'boolean'
+    !stateUpdate ||
+    !hasOnlyKeys(parsed, TOP_LEVEL_KEYS) ||
+    !hasOnlyKeys(stateUpdate, STATE_UPDATE_KEYS) ||
+    typeof stateUpdate.shouldUpdate !== 'boolean' ||
+    !(currentTopic === null || (typeof currentTopic === 'string' && currentTopic.length <= 100)) ||
+    !isValidStateStringArray(stateUpdate.currentConcerns) ||
+    !isValidStateStringArray(stateUpdate.userNeeds) ||
+    typeof stateUpdate.supportContext !== 'string' ||
+    !CONVERSATION_SUPPORT_CONTEXTS.includes(
+      stateUpdate.supportContext as (typeof CONVERSATION_SUPPORT_CONTEXTS)[number]
+    ) ||
+    typeof stateUpdate.safetyState !== 'string' ||
+    !CONVERSATION_SAFETY_STATES.includes(
+      stateUpdate.safetyState as (typeof CONVERSATION_SAFETY_STATES)[number]
+    ) ||
+    typeof stateUpdate.pendingQuestionCode !== 'string' ||
+    !CONVERSATION_PENDING_QUESTION_CODES.includes(
+      stateUpdate.pendingQuestionCode as (typeof CONVERSATION_PENDING_QUESTION_CODES)[number]
+    ) ||
+    typeof stateUpdate.lastAssistantIntent !== 'string' ||
+    !CONVERSATION_ASSISTANT_INTENTS.includes(
+      stateUpdate.lastAssistantIntent as (typeof CONVERSATION_ASSISTANT_INTENTS)[number]
+    )
   ) {
     throw new Error(`${providerName} returned an invalid structured response`);
   }
 
-  const update: ChatProfileUpdate = {
-    shouldUpdate: profileUpdate.shouldUpdate,
-    currentContextSummary: toOptionalString(profileUpdate.currentContextSummary),
-    recurringThemesToAdd: toStringArray(profileUpdate.recurringThemesToAdd),
-    emotionalPatternsToAdd: toStringArray(profileUpdate.emotionalPatternsToAdd),
-    routineNotesToAdd: toStringArray(profileUpdate.routineNotesToAdd),
-    helpfulStrategiesToAdd: toStringArray(profileUpdate.helpfulStrategiesToAdd),
-    unhelpfulStrategiesToAdd: toStringArray(profileUpdate.unhelpfulStrategiesToAdd),
-    boundariesToAdd: toStringArray(profileUpdate.boundariesToAdd)
+  const update: ChatConversationStateUpdate = {
+    shouldUpdate: stateUpdate.shouldUpdate,
+    currentTopic: toOptionalString(stateUpdate.currentTopic),
+    currentConcerns: stateUpdate.currentConcerns,
+    userNeeds: stateUpdate.userNeeds,
+    supportContext: stateUpdate.supportContext as ChatConversationStateUpdate['supportContext'],
+    safetyState: stateUpdate.safetyState as ChatConversationStateUpdate['safetyState'],
+    pendingQuestionCode:
+      stateUpdate.pendingQuestionCode as ChatConversationStateUpdate['pendingQuestionCode'],
+    lastAssistantIntent:
+      stateUpdate.lastAssistantIntent as ChatConversationStateUpdate['lastAssistantIntent']
   };
 
   return {
     reply: parsed.reply.trim(),
     riskLevel: riskLevel as ChatRiskLevel,
     scopeStatus: scopeStatus as ConversationScopeStatus,
-    profileUpdate: update
+    conversationStateUpdate: update
   };
 }

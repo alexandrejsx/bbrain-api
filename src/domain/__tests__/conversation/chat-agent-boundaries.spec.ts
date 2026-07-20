@@ -58,4 +58,40 @@ describe('chat agent architecture boundaries', () => {
 
     expect(violations).toEqual([]);
   });
+
+  it('explicitly disables provider-side request storage for sensitive model calls', () => {
+    const adapters = [
+      'src/infrastructure/openai/openai-chat-agent.ts',
+      'src/infrastructure/openai/openai-observation-extractor.ts',
+      'src/infrastructure/gemini/gemini-chat-agent.ts',
+      'src/infrastructure/gemini/gemini-observation-extractor.ts'
+    ];
+
+    for (const adapter of adapters) {
+      expect(read(join(root, adapter))).toContain('store: false');
+    }
+  });
+
+  it('defines self-label, exclusivity and immediate-safety prompt boundaries', () => {
+    const prompt = read(join(root, 'src/infrastructure/chat/prompts/prompt-registry.ts'));
+
+    expect(prompt).toContain('SELF_REPORTED_CLINICAL_LABEL_POLICY:');
+    expect(prompt).toContain('DEPENDENCY_BOUNDARY:');
+    expect(prompt).toContain('nunca dizer "estamos sozinhos nessa"');
+    expect(prompt).toContain('perguntar diretamente sobre segurança imediata');
+  });
+
+  it('keeps the active conversation flow independent from raw transcript reads and writes', () => {
+    const sendUseCase = read(
+      join(root, 'src/use-cases/conversation/send-chat-message.use-case.ts')
+    );
+    const contextBuilder = read(
+      join(root, 'src/use-cases/conversation/conversation-agent-context-builder.service.ts')
+    );
+
+    expect(sendUseCase).not.toContain('appendExchange');
+    expect(sendUseCase).not.toContain('assistantMessage');
+    expect(contextBuilder).not.toContain('findRecent');
+    expect(contextBuilder).not.toContain('recentMessages');
+  });
 });

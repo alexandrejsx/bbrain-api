@@ -108,7 +108,15 @@ export class MockChatAgent implements ChatAgent {
       reply,
       riskLevel: 'none',
       scopeStatus: 'in_scope',
-      profileUpdate: { shouldUpdate: false },
+      conversationStateUpdate: {
+        shouldUpdate: false,
+        currentConcerns: [],
+        userNeeds: [],
+        supportContext: 'unknown',
+        safetyState: 'none',
+        pendingQuestionCode: 'other',
+        lastAssistantIntent: 'other'
+      },
       usage: estimateLlmUsageFromText(request.message, reply)
     });
   }

@@ -88,12 +88,25 @@ export class UserDailyUsage extends Entity<UserDailyUsageProps> {
   }
 
   registerLlmUsage(usage: LlmUsage, date = new Date()): void {
+    this.registerUsage(usage, true, date);
+  }
+
+  registerAuxiliaryLlmUsage(usage: LlmUsage, date = new Date()): void {
+    this.registerUsage(usage, false, date);
+  }
+
+  releaseMessageReservation(date = new Date()): void {
+    if (this.props.messageCount > 0) this.props.messageCount -= 1;
+    this.props.updatedAt = date;
+  }
+
+  private registerUsage(usage: LlmUsage, incrementMessageCount: boolean, date: Date): void {
     const normalizedUsage = normalizeLlmUsage(usage);
 
     this.props.inputTokens += normalizedUsage.inputTokens;
     this.props.outputTokens += normalizedUsage.outputTokens;
     this.props.totalTokens += normalizedUsage.totalTokens;
-    this.props.messageCount += 1;
+    if (incrementMessageCount) this.props.messageCount += 1;
     this.props.updatedAt = date;
   }
 

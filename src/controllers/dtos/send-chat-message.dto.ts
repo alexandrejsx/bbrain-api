@@ -7,9 +7,17 @@ export class SendChatMessageDto {
   @IsUUID()
   conversationId?: string;
 
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsUUID()
+  @MinLength(1)
+  @MaxLength(128)
+  clientMessageId?: string;
+
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MinLength(2)
-  @MaxLength(4000)
+  @MaxLength(12000)
   message: string;
 }

@@ -1,28 +1,41 @@
 import { Module } from '@nestjs/common';
 import { getModelToken, MongooseModule } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { ConfigService } from '@nestjs/config';
 import { ReflectiveProfileRepository } from '../domain/conversation/repositories/reflective-profile.repository';
+import { ConversationStateRepository } from '../domain/conversation/repositories/conversation-state.repository';
 import { UserRepository } from '../domain/users/repositories/user.repository';
-import { MongoConversationMessageHistoryRepository } from '../infrastructure/database/mongodb/repositories/mongo-conversation-message-history.repository';
+import { MongoConversationStateRepository } from '../infrastructure/database/mongodb/repositories/mongo-conversation-state.repository';
+import { MongoConversationExchangeLedgerRepository } from '../infrastructure/database/mongodb/repositories/mongo-conversation-exchange-ledger.repository';
 import { MongoReflectiveProfileRepository } from '../infrastructure/database/mongodb/repositories/mongo-reflective-profile.repository';
 import { MongodbRepository } from '../infrastructure/database/mongodb/mongodb.repository';
 import {
-  ConversationMessageDocument,
-  ConversationMessageMongo,
-  ConversationMessageSchema
-} from '../infrastructure/database/mongodb/schemas/conversation-message.schema';
+  ConversationExchangeLedgerDocument,
+  ConversationExchangeLedgerMongo,
+  ConversationExchangeLedgerSchema
+} from '../infrastructure/database/mongodb/schemas/conversation-exchange-ledger.schema';
+import {
+  ConversationStateDocument,
+  ConversationStateMongo,
+  ConversationStateSchema
+} from '../infrastructure/database/mongodb/schemas/conversation-state.schema';
 import {
   ReflectiveProfileDocument,
   ReflectiveProfileMongo,
   ReflectiveProfileSchema
 } from '../infrastructure/database/mongodb/schemas/reflective-profile.schema';
 import { ConversationAgentContextBuilderService } from '../use-cases/conversation/conversation-agent-context-builder.service';
-import { ConversationMessageHistoryPort } from '../use-cases/conversation/ports/conversation-message-history.port';
+import { ConversationExchangeLedgerPort } from '../use-cases/conversation/ports/conversation-exchange-ledger.port';
+import { SensitiveTextFingerprintPort } from '../use-cases/conversation/ports/sensitive-text-fingerprint.port';
+import { HmacSensitiveTextFingerprintService } from '../infrastructure/security/hmac-sensitive-text-fingerprint.service';
 import {
-  CONVERSATION_MESSAGE_HISTORY_BASE_REPOSITORY,
-  CONVERSATION_MESSAGE_HISTORY_REPOSITORY,
+  CONVERSATION_EXCHANGE_LEDGER,
+  CONVERSATION_EXCHANGE_LEDGERS_BASE_REPOSITORY,
+  CONVERSATION_STATES_BASE_REPOSITORY,
+  CONVERSATION_STATES_REPOSITORY,
   REFLECTIVE_PROFILES_BASE_REPOSITORY,
   REFLECTIVE_PROFILES_REPOSITORY,
+  SENSITIVE_TEXT_FINGERPRINT,
   USERS_REPOSITORY
 } from './tokens';
 import { UsersModule } from './users.module';
@@ -31,22 +44,50 @@ import { UsersModule } from './users.module';
   imports: [
     UsersModule,
     MongooseModule.forFeature([
-      { name: ConversationMessageMongo.name, schema: ConversationMessageSchema },
+      { name: ConversationStateMongo.name, schema: ConversationStateSchema },
+      { name: ConversationExchangeLedgerMongo.name, schema: ConversationExchangeLedgerSchema },
       { name: ReflectiveProfileMongo.name, schema: ReflectiveProfileSchema }
     ])
   ],
   providers: [
     {
-      provide: CONVERSATION_MESSAGE_HISTORY_BASE_REPOSITORY,
-      useFactory: (model: Model<ConversationMessageDocument>) =>
-        new MongodbRepository<ConversationMessageDocument>(model),
-      inject: [getModelToken(ConversationMessageMongo.name)]
+      provide: CONVERSATION_STATES_BASE_REPOSITORY,
+      useFactory: (model: Model<ConversationStateDocument>) =>
+        new MongodbRepository<ConversationStateDocument>(model),
+      inject: [getModelToken(ConversationStateMongo.name)]
     },
     {
-      provide: CONVERSATION_MESSAGE_HISTORY_REPOSITORY,
-      useFactory: (baseRepository: MongodbRepository<ConversationMessageDocument>) =>
-        new MongoConversationMessageHistoryRepository(baseRepository),
-      inject: [CONVERSATION_MESSAGE_HISTORY_BASE_REPOSITORY]
+      provide: CONVERSATION_STATES_REPOSITORY,
+      useFactory: (baseRepository: MongodbRepository<ConversationStateDocument>) =>
+        new MongoConversationStateRepository(baseRepository),
+      inject: [CONVERSATION_STATES_BASE_REPOSITORY]
+    },
+    {
+      provide: CONVERSATION_EXCHANGE_LEDGERS_BASE_REPOSITORY,
+      useFactory: (model: Model<ConversationExchangeLedgerDocument>) =>
+        new MongodbRepository<ConversationExchangeLedgerDocument>(model),
+      inject: [getModelToken(ConversationExchangeLedgerMongo.name)]
+    },
+    {
+      provide: CONVERSATION_EXCHANGE_LEDGER,
+      useFactory: (
+        baseRepository: MongodbRepository<ConversationExchangeLedgerDocument>,
+        config: ConfigService
+      ): ConversationExchangeLedgerPort =>
+        new MongoConversationExchangeLedgerRepository(baseRepository, {
+          ttlHours: config.get<number>('conversation.exchangeLedgerTtlHours') || 24,
+          processingLeaseSeconds:
+            config.get<number>('conversation.exchangeProcessingLeaseSeconds') || 120
+        }),
+      inject: [CONVERSATION_EXCHANGE_LEDGERS_BASE_REPOSITORY, ConfigService]
+    },
+    {
+      provide: SENSITIVE_TEXT_FINGERPRINT,
+      useFactory: (config: ConfigService): SensitiveTextFingerprintPort =>
+        new HmacSensitiveTextFingerprintService(
+          config.getOrThrow<string>('conversation.fingerprintSecret')
+        ),
+      inject: [ConfigService]
     },
     {
       provide: REFLECTIVE_PROFILES_BASE_REPOSITORY,
@@ -65,23 +106,21 @@ import { UsersModule } from './users.module';
       useFactory: (
         userRepository: UserRepository,
         profileRepository: ReflectiveProfileRepository,
-        messageHistory: ConversationMessageHistoryPort
+        conversationStateRepository: ConversationStateRepository
       ) =>
         new ConversationAgentContextBuilderService(
           userRepository,
           profileRepository,
-          messageHistory
+          conversationStateRepository
         ),
-      inject: [
-        USERS_REPOSITORY,
-        REFLECTIVE_PROFILES_REPOSITORY,
-        CONVERSATION_MESSAGE_HISTORY_REPOSITORY
-      ]
+      inject: [USERS_REPOSITORY, REFLECTIVE_PROFILES_REPOSITORY, CONVERSATION_STATES_REPOSITORY]
     }
   ],
   exports: [
     ConversationAgentContextBuilderService,
-    CONVERSATION_MESSAGE_HISTORY_REPOSITORY,
+    CONVERSATION_STATES_REPOSITORY,
+    CONVERSATION_EXCHANGE_LEDGER,
+    SENSITIVE_TEXT_FINGERPRINT,
     REFLECTIVE_PROFILES_REPOSITORY
   ]
 })

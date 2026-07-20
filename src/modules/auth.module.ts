@@ -4,7 +4,9 @@ import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
 import { AuthController } from '../controllers/auth.controller';
 import type { EventDispatcher } from '../domain/core/event-dispatcher';
 import { ReflectiveProfileRepository } from '../domain/conversation/repositories/reflective-profile.repository';
+import { ConversationStateRepository } from '../domain/conversation/repositories/conversation-state.repository';
 import { UserRepository } from '../domain/users/repositories/user.repository';
+import { WellbeingObservationRepository } from '../domain/wellbeing-history/repositories/wellbeing-observation.repository';
 import { JwtAuthGuard } from '../infrastructure/http/guards/jwt-auth.guard';
 import { JwtTokenService } from '../shared/services/jwt-token.service';
 import { EmailService } from '../shared/services/email.service';
@@ -16,22 +18,27 @@ import { DeactivateUserAccountUseCase } from '../use-cases/auth/deactivate-user-
 import { LoginUserUseCase } from '../use-cases/auth/login-user.use-case';
 import { RequestPasswordResetUseCase } from '../use-cases/auth/request-password-reset.use-case';
 import { RegisterUserUseCase } from '../use-cases/auth/register-user.use-case';
-import { ConversationMessageHistoryPort } from '../use-cases/conversation/ports/conversation-message-history.port';
+import { ConversationExchangeLedgerPort } from '../use-cases/conversation/ports/conversation-exchange-ledger.port';
 import { ConversationContextModule } from './conversation-context.module';
 import { EventsModule } from './events.module';
 import {
-  CONVERSATION_MESSAGE_HISTORY_REPOSITORY,
+  CONVERSATION_STATES_REPOSITORY,
+  CONVERSATION_EXCHANGE_LEDGER,
   EVENT_DISPATCHER,
   REFLECTIVE_PROFILES_REPOSITORY,
+  WELLBEING_OBSERVATIONS_REPOSITORY,
   USERS_REPOSITORY
 } from './tokens';
 import { UsersModule } from './users.module';
+import { WellbeingHistoryContextModule } from './wellbeing-history-context.module';
+import { WellbeingCaptureCoordinator } from '../use-cases/wellbeing-history/wellbeing-capture-coordinator.service';
 
 @Module({
   imports: [
     UsersModule,
     EventsModule,
     ConversationContextModule,
+    WellbeingHistoryContextModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService): JwtModuleOptions => {
@@ -59,19 +66,28 @@ import { UsersModule } from './users.module';
         configService: ConfigService,
         userRepository: UserRepository,
         reflectiveProfileRepository: ReflectiveProfileRepository,
-        conversationMessageHistory: ConversationMessageHistoryPort
+        conversationStateRepository: ConversationStateRepository,
+        conversationExchangeLedger: ConversationExchangeLedgerPort,
+        wellbeingObservationRepository: WellbeingObservationRepository,
+        wellbeingCaptureCoordinator: WellbeingCaptureCoordinator
       ) =>
         new AccountLifecycleService(
           configService,
           userRepository,
           reflectiveProfileRepository,
-          conversationMessageHistory
+          conversationStateRepository,
+          conversationExchangeLedger,
+          wellbeingObservationRepository,
+          wellbeingCaptureCoordinator
         ),
       inject: [
         ConfigService,
         USERS_REPOSITORY,
         REFLECTIVE_PROFILES_REPOSITORY,
-        CONVERSATION_MESSAGE_HISTORY_REPOSITORY
+        CONVERSATION_STATES_REPOSITORY,
+        CONVERSATION_EXCHANGE_LEDGER,
+        WELLBEING_OBSERVATIONS_REPOSITORY,
+        WellbeingCaptureCoordinator
       ]
     },
     {

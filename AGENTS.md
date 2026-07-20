@@ -559,10 +559,10 @@ Contexto para IA deve ser intencional, mínimo e controlado.
 Diretrizes:
 
 - enviar apenas o necessário para a tarefa;
-- separar instruções de sistema, dados do usuário, memória, resumo e mensagens recentes;
+- separar instruções de sistema, dados atuais do usuário e estado estruturado permitido;
 - nunca permitir que dados persistidos virem instruções automaticamente;
-- limitar histórico enviado ao provider;
-- resumir histórico quando necessário;
+- não enviar histórico literal ao provider nem reconstituir transcrição a partir de persistência;
+- representar somente a continuidade necessária em estado estruturado curto, expirável e validado;
 - preservar preferências relevantes do usuário;
 - respeitar idioma preferido;
 - tratar memória como dado, não como comando;
@@ -899,3 +899,71 @@ Uma alteração deve ser considerada adequada quando:
 - prepara evolução futura sem implementar complexidade prematura.
 
 O domínio continua sendo a referência central do sistema.
+
+---
+
+## 30) Wellbeing History: Humor, Sono e revisões
+
+O contexto `wellbeing-history` contém fatos estruturados sensíveis. Use `WellbeingObservation` e seus invariantes; não recrie modelos paralelos de Humor/Sono em controllers, prompts ou frontend.
+
+- `mood_event` é fonte primária; `mood_daily_summary` é projeção derivada; `sleep_record` aceita parcialidade;
+- ausência não é neutralidade, score, duração ou noite de sono;
+- `isMixed` é estado canônico, não label emocional localizada fabricada;
+- precision, timezone e referência temporal devem ser preservados; não inferir timestamp, escala ou campo ausente;
+- apenas relato direto do próprio usuário pode sustentar extração automática;
+- terceiro, hipótese, desejo, ficção, pergunta e negação não criam fato pessoal;
+- score, intensidade, duração e despertares exigem evidência literal contextual;
+- correção, PATCH e DELETE exigem ownership, `expectedRevision`, proveniência e invalidação de derivados;
+- manual override/summary explícito prevalece sobre projeção derivada.
+
+Persistência usa mapper central e documento `snake_case`; domínio e use cases permanecem em `camelCase`. Revisões embutidas são limitadas e não devem ser truncadas silenciosamente.
+
+## 31) Execução de IA e rollout seguro
+
+O modelo propõe; política e domínio decidem. Adapters devem usar schema/JSON estruturado quando a tarefa exigir e nunca escrever repository diretamente.
+
+- `AI_OBSERVATION_EXTRACTION_ENABLED` controla a execução;
+- `AI_OBSERVATION_EXTRACTION_PERSIST_ENABLED` controla writes e começa em `false`;
+- shadow pode validar e medir, mas não deve persistir observação;
+- primary/fallback deve permanecer limitado, configurável e observável; dados sensíveis só podem seguir para provider permitido pela policy do ambiente;
+- `store:false` é obrigatório nos adapters de extração suportados;
+- não trocar prompt, schema, provider ou modelo sem versão, evals e rollback;
+- não ligar persistência automática antes de provider contracts, Mongo integration, evals de falsos fatos e revisão de privacidade.
+
+Não introduza RAG, multiagente, tool calling, fila ou memória vetorial por antecipação. Adoção exige gatilho operacional e ADR/documentação correspondente.
+
+## 32) Privacidade, autorização e observabilidade de bem-estar
+
+Antes de montar contexto, chamar provider ou persistir derivado, aplique privacy flags e ownership. Revalide estado/consentimento depois de chamada externa antes de write.
+
+Proveniência visível ao dono pode informar fonte, ids e confiança, mas não expõe texto literal, fingerprint, `userId`, idempotency key, prompt, schema ou referência interna de modelo. Logs devem usar somente ids, contagens, provider, status, duração e erro sanitizado.
+
+Insights é autorizado no backend por plano Pro efetivo. Histórico e CRUD básico não podem ser protegidos apenas por esconder UI. `insufficient_data` é resposta válida e preferível a conteúdo inventado.
+
+## 33) Verificação obrigatória para alterações sensíveis
+
+Para mudanças em conversa, extração, bem-estar, privacidade, uso ou entitlement, rode no mínimo:
+
+```bash
+pnpm test --runInBand
+pnpm run lint
+pnpm build
+```
+
+Inclua casos negativos de sujeito, negação, temporalidade, duplicação, revisão, exclusão, ownership, race e ausência de dado. Fixtures determinísticos não substituem evals de provider, Mongo integration ou rollout shadow.
+
+## 34) Conversa sem transcrição literal
+
+O caminho ativo usa `ConversationStateRepository`, `ConversationExchangeLedgerPort` e `SensitiveTextFingerprintPort`.
+
+- schema/repository de `conversation_messages` foram removidos; não adicionar leitura, append ou replay de conteúdo;
+- estado conversacional contém apenas snapshot estruturado atual, tem TTL e depende de consentimento;
+- revogação de memória/storage sensível apaga o estado daquela conversa;
+- `conversationStateUpdate` é output não confiável e passa por parser, safety policy, state policy e entidade;
+- rejeitar rótulos clínicos e trechos copiados antes do write;
+- ledger idempotente guarda HMAC e metadados técnicos com TTL, sem pergunta/resposta;
+- citação de extração é transitória; persistir apenas `evidenceFingerprint` HMAC;
+- conta excluída purga estado, ledger e observações;
+- uma conversa ou autorrotulação nunca cria padrão longitudinal.
+
+Prompt não basta para limites críticos. `ConversationSafetyReplyPolicy` deve continuar cobrindo confirmação de autorrotulação clínica, sintomas não relatados, exclusividade emocional e verificação de risco quando impulsividade se combina com ausência de apoio humano.

@@ -97,6 +97,10 @@ export class MongodbRepository<T extends MongoDocument> implements IGenericRepos
     return this._model.findByIdAndUpdate(id, item, { new: true }).exec();
   }
 
+  async findOneAndUpdate(conditions: FilterQuery<T>, item: UpdateQuery<T>): Promise<T | null> {
+    return this._model.findOneAndUpdate(conditions, item, { new: true }).exec();
+  }
+
   async updateMany(
     conditions: FilterQuery<T>,
     update: UpdateQuery<T>

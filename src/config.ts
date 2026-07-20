@@ -21,6 +21,7 @@ interface EmailConfig {
 interface BBrainModelConfig {
   chat: string;
   internal: string;
+  observationExtraction: string;
   risk: string;
   escalation: string;
 }
@@ -29,11 +30,13 @@ interface OpenAIConfig {
   apiKey: string;
   models: BBrainModelConfig;
   embeddingModel: string;
+  timeoutMs: number;
 }
 
 interface GeminiConfig {
   apiKey: string;
   model: string;
+  observationExtractionModel: string;
   timeoutMs: number;
 }
 
@@ -64,10 +67,24 @@ interface BillingConfig {
 
 interface AiConfig {
   chatProvider: 'gemini' | 'openai' | 'mock';
+  observationExtraction: {
+    enabled: boolean;
+    persistEnabled: boolean;
+    primaryProvider: 'gemini' | 'openai' | 'noop';
+    fallbackProvider: 'gemini' | 'openai' | 'noop';
+    minimumConfidence: number;
+  };
 }
 
 interface CorsConfig {
   origins: string[];
+}
+
+interface ConversationConfig {
+  stateTtlHours: number;
+  exchangeLedgerTtlHours: number;
+  exchangeProcessingLeaseSeconds: number;
+  fingerprintSecret: string;
 }
 
 interface AppConfig {
@@ -76,6 +93,7 @@ interface AppConfig {
   port: number;
   apiBaseUrl?: string;
   cors: CorsConfig;
+  conversation: ConversationConfig;
   mongoDb: MongoDBConfig;
   auth: AuthConfig;
   email: EmailConfig;
@@ -103,6 +121,43 @@ const parseChatProvider = (value?: string): AiConfig['chatProvider'] => {
   return 'gemini';
 };
 
+const parseObservationProvider = (
+  value: string | undefined,
+  fallback: AiConfig['observationExtraction']['primaryProvider']
+): AiConfig['observationExtraction']['primaryProvider'] => {
+  if (value === 'openai' || value === 'gemini' || value === 'noop') return value;
+  return fallback;
+};
+
+const parseBoolean = (value: string | undefined, fallback = false): boolean => {
+  if (value === undefined) return fallback;
+  return value.trim().toLowerCase() === 'true';
+};
+
+const parseConfidence = (value: string | undefined, fallback: number): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : fallback;
+};
+
+const parsePositiveNumber = (value: string | undefined, fallback: number): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const resolveConversationFingerprintSecret = (): string => {
+  const configured = process.env.CONVERSATION_FINGERPRINT_SECRET?.trim();
+  if (configured) return configured;
+
+  const environment = process.env.NODE_ENV || 'local';
+  if (environment === 'production' || environment === 'staging') {
+    throw new Error(
+      'CONVERSATION_FINGERPRINT_SECRET is required outside local and test environments'
+    );
+  }
+
+  return 'local-conversation-fingerprint-secret';
+};
+
 const parseCorsOrigins = (value?: string): string[] => {
   if (!value) {
     return ['http://localhost:3000'];
@@ -120,6 +175,8 @@ const parseBBrainModels = (): BBrainModelConfig => {
   return {
     chat: process.env.OPENAI_CHAT_MODEL || DEFAULT_BBRAIN_MODELS.chat,
     internal,
+    observationExtraction:
+      process.env.OPENAI_OBSERVATION_EXTRACTION_MODEL || DEFAULT_BBRAIN_MODELS.chat,
     risk: process.env.OPENAI_RISK_MODEL || internal,
     escalation: process.env.OPENAI_ESCALATION_MODEL || DEFAULT_BBRAIN_MODELS.escalation
   };
@@ -132,6 +189,18 @@ const config = (): AppConfig => ({
   apiBaseUrl: process.env.API_BASE_URL,
   cors: {
     origins: parseCorsOrigins(process.env.CORS_ORIGINS)
+  },
+  conversation: {
+    stateTtlHours: parsePositiveNumber(process.env.CONVERSATION_STATE_TTL_HOURS, 24),
+    exchangeLedgerTtlHours: parsePositiveNumber(
+      process.env.CONVERSATION_EXCHANGE_LEDGER_TTL_HOURS,
+      24
+    ),
+    exchangeProcessingLeaseSeconds: parsePositiveNumber(
+      process.env.CONVERSATION_EXCHANGE_PROCESSING_LEASE_SECONDS,
+      120
+    ),
+    fingerprintSecret: resolveConversationFingerprintSecret()
   },
   mongoDb: {
     uri: process.env.MONGODB_URI || 'mongodb://localhost:27017',
@@ -153,16 +222,34 @@ const config = (): AppConfig => ({
     resendApiKey: process.env.RESEND_API_KEY
   },
   ai: {
-    chatProvider: parseChatProvider(process.env.AI_CHAT_PROVIDER)
+    chatProvider: parseChatProvider(process.env.AI_CHAT_PROVIDER),
+    observationExtraction: {
+      enabled: parseBoolean(process.env.AI_OBSERVATION_EXTRACTION_ENABLED),
+      persistEnabled: parseBoolean(process.env.AI_OBSERVATION_EXTRACTION_PERSIST_ENABLED),
+      primaryProvider: parseObservationProvider(
+        process.env.AI_OBSERVATION_EXTRACTION_PROVIDER,
+        'gemini'
+      ),
+      fallbackProvider: parseObservationProvider(
+        process.env.AI_OBSERVATION_EXTRACTION_FALLBACK_PROVIDER,
+        'noop'
+      ),
+      minimumConfidence: parseConfidence(process.env.AI_OBSERVATION_EXTRACTION_MIN_CONFIDENCE, 0.85)
+    }
   },
   openAi: {
     apiKey: process.env.OPENAI_API_KEY || '',
     models: parseBBrainModels(),
-    embeddingModel: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small'
+    embeddingModel: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small',
+    timeoutMs: Number(process.env.OPENAI_TIMEOUT_MS || 30_000)
   },
   gemini: {
     apiKey: process.env.GEMINI_API_KEY || '',
     model: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+    observationExtractionModel:
+      process.env.GEMINI_OBSERVATION_EXTRACTION_MODEL ||
+      process.env.GEMINI_MODEL ||
+      'gemini-3.5-flash',
     timeoutMs: Number(process.env.GEMINI_TIMEOUT_MS || 60_000)
   },
   billing: {

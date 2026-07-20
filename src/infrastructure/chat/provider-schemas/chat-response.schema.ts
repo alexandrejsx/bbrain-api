@@ -1,7 +1,7 @@
-const stringArraySchema = {
+const stateStringArraySchema = {
   type: 'array',
-  items: { type: 'string' },
-  maxItems: 10
+  items: { type: 'string', minLength: 1, maxLength: 100 },
+  maxItems: 5
 } as const;
 
 export const CHAT_RESPONSE_SCHEMA = {
@@ -11,30 +11,56 @@ export const CHAT_RESPONSE_SCHEMA = {
     reply: { type: 'string', minLength: 1 },
     riskLevel: { type: 'string', enum: ['none', 'low', 'medium', 'high'] },
     scopeStatus: { type: 'string', enum: ['in_scope', 'out_of_scope'] },
-    profileUpdate: {
+    conversationStateUpdate: {
       type: 'object',
       additionalProperties: false,
       properties: {
         shouldUpdate: { type: 'boolean' },
-        currentContextSummary: { type: ['string', 'null'], maxLength: 500 },
-        recurringThemesToAdd: stringArraySchema,
-        emotionalPatternsToAdd: stringArraySchema,
-        routineNotesToAdd: stringArraySchema,
-        helpfulStrategiesToAdd: stringArraySchema,
-        unhelpfulStrategiesToAdd: stringArraySchema,
-        boundariesToAdd: stringArraySchema
+        currentTopic: { type: ['string', 'null'], maxLength: 100 },
+        currentConcerns: stateStringArraySchema,
+        userNeeds: stateStringArraySchema,
+        supportContext: { type: 'string', enum: ['unknown', 'available', 'none_reported'] },
+        safetyState: { type: 'string', enum: ['none', 'needs_check', 'immediate'] },
+        pendingQuestionCode: {
+          type: 'string',
+          enum: [
+            'none',
+            'current_feeling',
+            'routine_impact',
+            'coping_strategy',
+            'human_support_available',
+            'immediate_safety',
+            'next_step_preference',
+            'clarification',
+            'other'
+          ]
+        },
+        lastAssistantIntent: {
+          type: 'string',
+          enum: [
+            'listen',
+            'explore_impact',
+            'explore_coping',
+            'check_human_support',
+            'check_immediate_safety',
+            'offer_next_step',
+            'encourage_professional_support',
+            'close_topic',
+            'other'
+          ]
+        }
       },
       required: [
         'shouldUpdate',
-        'currentContextSummary',
-        'recurringThemesToAdd',
-        'emotionalPatternsToAdd',
-        'routineNotesToAdd',
-        'helpfulStrategiesToAdd',
-        'unhelpfulStrategiesToAdd',
-        'boundariesToAdd'
+        'currentTopic',
+        'currentConcerns',
+        'userNeeds',
+        'supportContext',
+        'safetyState',
+        'pendingQuestionCode',
+        'lastAssistantIntent'
       ]
     }
   },
-  required: ['reply', 'riskLevel', 'scopeStatus', 'profileUpdate']
+  required: ['reply', 'riskLevel', 'scopeStatus', 'conversationStateUpdate']
 } as const;

@@ -13,6 +13,9 @@ import { UsageLimitError } from '../domain/usage/services/usage.service';
 import { AuthenticatedRequest, JwtAuthGuard } from '../infrastructure/http/guards/jwt-auth.guard';
 import {
   ChatProviderUnavailableError,
+  ConversationMessageAlreadyProcessedError,
+  ConversationMessageFingerprintConflictError,
+  ConversationMessageInProgressError,
   SendChatMessageUseCase
 } from '../use-cases/conversation/send-chat-message.use-case';
 import { SendChatMessageDto } from './dtos/send-chat-message.dto';
@@ -30,6 +33,7 @@ export class ChatController {
       return await this.sendChatMessageUseCase.execute({
         userId: request.user!.id,
         conversationId: dto.conversationId,
+        clientMessageId: dto.clientMessageId,
         message: dto.message,
         acceptedLanguage: getHeaderValue(request.headers['accept-language'])
       });
@@ -54,6 +58,37 @@ export class ChatController {
             details: error.details
           },
           status
+        );
+      }
+
+      if (error instanceof ConversationMessageFingerprintConflictError) {
+        throw new HttpException(
+          {
+            code: 'CLIENT_MESSAGE_ID_REUSED',
+            message: 'Este identificador de mensagem já foi usado em outro conteúdo.'
+          },
+          HttpStatus.CONFLICT
+        );
+      }
+
+      if (error instanceof ConversationMessageAlreadyProcessedError) {
+        throw new HttpException(
+          {
+            code: 'MESSAGE_ALREADY_PROCESSED',
+            message:
+              'Esta mensagem já foi processada. A resposta não é armazenada pelo BBrain por privacidade.'
+          },
+          HttpStatus.CONFLICT
+        );
+      }
+
+      if (error instanceof ConversationMessageInProgressError) {
+        throw new HttpException(
+          {
+            code: 'MESSAGE_PROCESSING',
+            message: 'Esta mensagem já está sendo processada. Aguarde antes de tentar novamente.'
+          },
+          HttpStatus.CONFLICT
         );
       }
 

@@ -1,28 +1,43 @@
-import { ReflectiveProfile } from '../../conversation/entities/reflective-profile.entity';
 import { ConversationScopePolicy } from '../../conversation/services/conversation-scope-policy.service';
+import { ConversationStateUpdatePolicy } from '../../conversation/services/conversation-state-update-policy.service';
 import { UsageLimitError } from '../../usage/services/usage.service';
 import { ChatAgent } from '../../../use-cases/conversation/chat-agent.port';
 import { ConversationLanguageService } from '../../../use-cases/conversation/conversation-language.service';
 import { ConversationReplyCatalog } from '../../../use-cases/conversation/conversation-reply-catalog';
-import { ConversationMessageHistoryPort } from '../../../use-cases/conversation/ports/conversation-message-history.port';
-import { ProfileUpdateService } from '../../../use-cases/conversation/profile-update.service';
-import { SendChatMessageUseCase } from '../../../use-cases/conversation/send-chat-message.use-case';
+import { ConversationSafetyReplyPolicy } from '../../../use-cases/conversation/conversation-safety-reply.policy';
+import {
+  ChatProviderUnavailableError,
+  ConversationMessageAlreadyProcessedError,
+  ConversationMessageFingerprintConflictError,
+  ConversationMessageInProgressError,
+  SendChatMessageUseCase
+} from '../../../use-cases/conversation/send-chat-message.use-case';
+
+const noStateUpdate = {
+  shouldUpdate: false,
+  currentConcerns: [],
+  userNeeds: [],
+  supportContext: 'unknown' as const,
+  safetyState: 'none' as const,
+  pendingQuestionCode: 'none' as const,
+  lastAssistantIntent: 'listen' as const
+};
 
 function createUseCase(input?: {
-  usageService?: {
-    assertCanSendMessage: jest.Mock;
-    registerLlmUsage: jest.Mock;
-  };
   chatAgent?: ChatAgent;
-  contextBuilder?: {
-    build: jest.Mock;
-  };
+  usageService?: Record<string, jest.Mock>;
+  contextBuilder?: { build: jest.Mock };
+  ledgerClaim?: unknown;
 }) {
-  const profile = ReflectiveProfile.create('user-id', new Date('2026-01-01T00:00:00.000Z'));
-  const scopePolicy = new ConversationScopePolicy();
-  const usageService = input?.usageService ?? {
-    assertCanSendMessage: jest.fn().mockResolvedValue(undefined),
-    registerLlmUsage: jest.fn().mockResolvedValue(undefined)
+  const usageService = {
+    assertCanSendMessage: jest.fn().mockResolvedValue({
+      usageId: 'usage-id',
+      dailyTokenLimit: 30_000,
+      dailyMessageLimit: 20
+    }),
+    registerReservedLlmUsage: jest.fn().mockResolvedValue(undefined),
+    releaseMessageReservation: jest.fn().mockResolvedValue(undefined),
+    ...input?.usageService
   };
   const chatAgent =
     input?.chatAgent ??
@@ -31,7 +46,7 @@ function createUseCase(input?: {
         reply: 'Resposta acolhedora',
         riskLevel: 'none',
         scopeStatus: 'in_scope',
-        profileUpdate: { shouldUpdate: false },
+        conversationStateUpdate: noStateUpdate,
         usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 }
       })
     } satisfies ChatAgent);
@@ -40,292 +55,419 @@ function createUseCase(input?: {
     ({
       build: jest.fn().mockResolvedValue({
         profileConfigured: true,
-        sourceProfile: profile,
+        dataPolicy: {
+          timezone: 'UTC',
+          allowPersonalization: true,
+          allowMemory: true,
+          allowMoodInsights: true,
+          allowSensitiveDataStorage: true
+        },
         context: {
           userIdentityContext: { preferredLanguage: 'pt-BR' },
-          userProfileSummary: {},
-          recentMessages: []
+          userProfileSummary: {}
         }
       })
     } as const);
-  const profileRepository = {
-    save: jest.fn().mockResolvedValue(undefined)
+  const stateRepository = {
+    save: jest.fn().mockResolvedValue(true),
+    deleteByConversation: jest.fn().mockResolvedValue(undefined)
   };
-  const messageRepository = {
-    appendExchange: jest.fn().mockResolvedValue(undefined)
+  const exchangeLedger = {
+    claim: jest
+      .fn()
+      .mockResolvedValue(input?.ledgerClaim ?? { status: 'claimed', claimId: 'claim-id' }),
+    complete: jest.fn().mockResolvedValue(true),
+    release: jest.fn().mockResolvedValue(undefined)
   };
-  const eventDispatcher = {
-    dispatch: jest.fn().mockResolvedValue(undefined)
-  };
+  const fingerprint = { fingerprint: jest.fn().mockReturnValue('f'.repeat(64)) };
+  const eventDispatcher = { dispatch: jest.fn().mockResolvedValue(undefined) };
+  const wellbeingCapture = { schedule: jest.fn() };
 
   return {
     useCase: new SendChatMessageUseCase(
-      profileRepository as never,
       chatAgent,
-      scopePolicy,
+      new ConversationScopePolicy(),
       contextBuilder,
-      new ProfileUpdateService(scopePolicy),
-      messageRepository as unknown as ConversationMessageHistoryPort,
+      stateRepository as never,
+      new ConversationStateUpdatePolicy(),
+      exchangeLedger as never,
+      fingerprint,
       usageService as never,
       eventDispatcher,
       new ConversationLanguageService(),
-      new ConversationReplyCatalog()
+      new ConversationReplyCatalog(),
+      new ConversationSafetyReplyPolicy(),
+      24,
+      wellbeingCapture as never
     ),
-    usageService,
     chatAgent,
+    usageService,
     contextBuilder,
-    profileRepository,
-    messageRepository,
-    eventDispatcher
+    stateRepository,
+    exchangeLedger,
+    fingerprint,
+    eventDispatcher,
+    wellbeingCapture
   };
 }
 
-describe('SendChatMessageUseCase usage flow', () => {
-  it('asserts usage before calling the LLM', async () => {
-    const order: string[] = [];
-    const usageService = {
-      assertCanSendMessage: jest.fn().mockImplementation(() => {
-        order.push('assert');
-        return Promise.resolve();
-      }),
-      registerLlmUsage: jest.fn().mockResolvedValue(undefined)
-    };
-    const chatAgent = {
-      respond: jest.fn().mockImplementation(() => {
-        order.push('llm');
-        return Promise.resolve({
-          reply: 'Resposta acolhedora',
-          riskLevel: 'none',
-          scopeStatus: 'in_scope',
-          profileUpdate: { shouldUpdate: false },
-          usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 }
-        });
-      })
-    } satisfies ChatAgent;
-    const { useCase } = createUseCase({ usageService, chatAgent });
+describe('SendChatMessageUseCase state-only flow', () => {
+  it('calls the provider without writing literal user or assistant messages', async () => {
+    const setup = createUseCase();
 
-    await useCase.execute({ userId: 'user-id', message: 'Oi' });
-
-    expect(order).toEqual(['assert', 'llm']);
-  });
-
-  it('registers LLM usage after a successful response', async () => {
-    const { useCase, usageService, eventDispatcher, profileRepository, messageRepository } =
-      createUseCase();
-
-    await useCase.execute({ userId: 'user-id', conversationId: 'conversation-id', message: 'Oi' });
-
-    expect(profileRepository.save).toHaveBeenCalledTimes(1);
-    expect(messageRepository.appendExchange).toHaveBeenCalledWith(
-      'user-id',
-      'conversation-id',
-      'Oi',
-      'Resposta acolhedora',
-      expect.any(Date)
-    );
-    expect(usageService.registerLlmUsage).toHaveBeenCalledWith('user-id', {
-      inputTokens: 3,
-      outputTokens: 4,
-      totalTokens: 7
-    });
-    expect(eventDispatcher.dispatch).toHaveBeenCalledWith([
-      expect.objectContaining({
-        aggregateId: 'conversation-id',
-        name: 'conversation.message.received'
-      }),
-      expect.objectContaining({
-        aggregateId: 'conversation-id',
-        name: 'conversation.assistant-response.produced'
-      })
-    ]);
-  });
-
-  it('loads recent conversation context when conversationId is provided', async () => {
-    const { useCase, contextBuilder, chatAgent } = createUseCase();
-
-    await useCase.execute({
+    const result = await setup.useCase.execute({
       userId: 'user-id',
       conversationId: 'conversation-id',
-      message: 'os dois'
+      clientMessageId: 'message-id',
+      message: 'Dormi pouco.'
     });
 
-    expect(contextBuilder.build).toHaveBeenCalledWith('user-id', 'conversation-id');
-    expect(chatAgent.respond).toHaveBeenCalledWith(
+    expect(result.reply).toBe('Resposta acolhedora');
+    expect(setup.exchangeLedger.claim).toHaveBeenCalledWith(
+      expect.objectContaining({ requestFingerprint: 'f'.repeat(64) })
+    );
+    expect(setup.exchangeLedger.complete).toHaveBeenCalledWith(
       expect.objectContaining({
-        context: expect.objectContaining({
-          recentMessages: []
-        })
+        userId: 'user-id',
+        conversationId: 'conversation-id',
+        sourceMessageId: 'message-id',
+        riskLevel: 'none',
+        scopeStatus: 'in_scope'
       })
+    );
+    expect(JSON.stringify(setup.exchangeLedger.complete.mock.calls)).not.toContain('Dormi pouco.');
+    expect(JSON.stringify(setup.exchangeLedger.complete.mock.calls)).not.toContain(
+      'Resposta acolhedora'
     );
   });
 
-  it('behaves statelessly when conversationId is absent', async () => {
-    const { useCase, contextBuilder } = createUseCase();
-
-    await useCase.execute({
-      userId: 'user-id',
-      message: 'os dois'
-    });
-
-    expect(contextBuilder.build).toHaveBeenCalledWith('user-id', undefined);
-  });
-
-  it('does not call the LLM when the user is blocked by usage limits', async () => {
-    const usageService = {
-      assertCanSendMessage: jest
-        .fn()
-        .mockRejectedValue(
-          new UsageLimitError(
-            'USAGE_MESSAGE_LIMIT_REACHED',
-            'Você chegou ao limite diário de mensagens do seu plano.'
-          )
-        ),
-      registerLlmUsage: jest.fn().mockResolvedValue(undefined)
-    };
-    const chatAgent = {
-      respond: jest.fn()
-    } satisfies ChatAgent;
-    const { useCase } = createUseCase({ usageService, chatAgent });
-
-    await expect(useCase.execute({ userId: 'user-id', message: 'Oi' })).rejects.toMatchObject({
-      code: 'USAGE_MESSAGE_LIMIT_REACHED'
-    });
-    expect(chatAgent.respond).not.toHaveBeenCalled();
-    expect(usageService.registerLlmUsage).not.toHaveBeenCalled();
-  });
-
-  it('keeps riskLevel from the ChatAgent in the normal flow', async () => {
+  it('persists only a validated ephemeral state with TTL semantics', async () => {
     const chatAgent = {
       respond: jest.fn().mockResolvedValue({
-        reply: 'Resposta de alto risco vinda do agente',
-        riskLevel: 'high',
+        reply: 'Obrigado por contar. Você sente que pode agir de modo a colocar alguém em risco?',
+        riskLevel: 'medium',
         scopeStatus: 'in_scope',
-        profileUpdate: { shouldUpdate: false },
-        usage: { inputTokens: 5, outputTokens: 6, totalTokens: 11 }
+        conversationStateUpdate: {
+          shouldUpdate: true,
+          currentTopic: 'sono e sobrecarga de trabalho',
+          currentConcerns: ['dificuldade com controle de impulsos'],
+          userNeeds: ['apoio humano'],
+          supportContext: 'none_reported',
+          safetyState: 'needs_check',
+          pendingQuestionCode: 'immediate_safety',
+          lastAssistantIntent: 'check_immediate_safety'
+        },
+        usage: { inputTokens: 5, outputTokens: 8, totalTokens: 13 }
       })
     } satisfies ChatAgent;
-    const { useCase } = createUseCase({ chatAgent });
+    const setup = createUseCase({ chatAgent });
 
-    const result = await useCase.execute({
+    await setup.useCase.execute({
       userId: 'user-id',
-      message: 'quero me matar',
-      acceptedLanguage: 'pt-BR'
+      conversationId: 'conversation-id',
+      clientMessageId: 'message-id',
+      message: 'Não tenho ninguém por perto.'
     });
 
-    expect(result.riskLevel).toBe('high');
-  });
-
-  it('keeps the response language in pt-BR when the profile is pt-BR even if the message is in English', async () => {
-    const chatAgent = {
-      respond: jest.fn().mockResolvedValue({
-        reply: 'Resposta acolhedora',
-        riskLevel: 'none',
-        scopeStatus: 'in_scope',
-        profileUpdate: { shouldUpdate: false },
-        usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 }
-      })
-    } satisfies ChatAgent;
-    const { useCase } = createUseCase({ chatAgent });
-
-    await useCase.execute({
-      userId: 'user-id',
-      message: 'I feel overwhelmed today',
-      acceptedLanguage: 'en-US'
-    });
-
-    expect(chatAgent.respond).toHaveBeenCalledWith(
+    expect(setup.stateRepository.save).toHaveBeenCalledTimes(1);
+    const state = setup.stateRepository.save.mock.calls[0][0];
+    expect(state.toSnapshot()).toEqual(
       expect.objectContaining({
-        preferredLanguage: 'pt-BR',
-        responseLanguage: 'pt-BR'
+        supportContext: 'none_reported',
+        safetyState: 'needs_check',
+        pendingQuestionCode: 'immediate_safety'
       })
     );
+    expect(state.expiresAt.getTime()).toBeGreaterThan(state.toJson().updatedAt.getTime());
+    expect(JSON.stringify(state.toJson())).not.toContain('Não tenho ninguém por perto.');
   });
 
-  it('keeps the response language in en-US when the profile is en-US even if the message is in Portuguese', async () => {
+  it('rejects model state containing a clinical label or copied passage', async () => {
     const chatAgent = {
       respond: jest.fn().mockResolvedValue({
-        reply: 'Supportive reply',
-        riskLevel: 'none',
+        reply: 'Não consigo confirmar um diagnóstico.',
+        riskLevel: 'low',
         scopeStatus: 'in_scope',
-        profileUpdate: { shouldUpdate: false },
+        conversationStateUpdate: {
+          shouldUpdate: true,
+          currentTopic: 'mania',
+          currentConcerns: ['creio que esteja em mania'],
+          userNeeds: [],
+          supportContext: 'unknown',
+          safetyState: 'none',
+          pendingQuestionCode: 'clarification',
+          lastAssistantIntent: 'listen'
+        },
         usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 }
       })
     } satisfies ChatAgent;
+    const setup = createUseCase({ chatAgent });
+
+    await setup.useCase.execute({
+      userId: 'user-id',
+      conversationId: 'conversation-id',
+      message: 'creio que esteja em mania'
+    });
+
+    const state = setup.stateRepository.save.mock.calls[0][0];
+    expect(JSON.stringify(state.toJson())).not.toMatch(/mania|maníac/iu);
+    expect(state.toSnapshot().currentTopic).toBe('mudanças percebidas na rotina');
+  });
+
+  it('deletes previous state and disables capture when sensitive storage is denied', async () => {
     const contextBuilder = {
       build: jest.fn().mockResolvedValue({
         profileConfigured: true,
-        sourceProfile: ReflectiveProfile.create('user-id', new Date('2026-01-01T00:00:00.000Z')),
-        context: {
-          userIdentityContext: { preferredLanguage: 'en-US' },
-          userProfileSummary: {},
-          recentMessages: []
-        }
+        dataPolicy: {
+          timezone: 'UTC',
+          allowPersonalization: true,
+          allowMemory: true,
+          allowMoodInsights: true,
+          allowSensitiveDataStorage: false
+        },
+        context: { userProfileSummary: {} }
       })
     };
-    const { useCase } = createUseCase({ chatAgent, contextBuilder });
+    const setup = createUseCase({ contextBuilder });
 
-    await useCase.execute({
+    await setup.useCase.execute({
       userId: 'user-id',
-      message: 'estou sobrecarregado hoje',
-      acceptedLanguage: 'pt-BR'
+      conversationId: 'conversation-id',
+      clientMessageId: 'message-id',
+      message: 'Hoje foi difícil.'
     });
 
-    expect(chatAgent.respond).toHaveBeenCalledWith(
-      expect.objectContaining({
-        preferredLanguage: 'en-US',
-        responseLanguage: 'en-US'
-      })
+    expect(setup.stateRepository.deleteByConversation).toHaveBeenCalledWith(
+      'user-id',
+      'conversation-id'
+    );
+    expect(setup.stateRepository.save).not.toHaveBeenCalled();
+    expect(setup.wellbeingCapture.schedule).toHaveBeenCalledWith(
+      expect.objectContaining({ allowAutomaticCapture: false })
     );
   });
 
-  it('propagates UsageLimitError when usage is blocked', async () => {
+  it.each([
+    [{ status: 'already_completed' }, ConversationMessageAlreadyProcessedError],
+    [{ status: 'in_progress' }, ConversationMessageInProgressError],
+    [{ status: 'fingerprint_conflict' }, ConversationMessageFingerprintConflictError]
+  ])('does not call the provider for ledger result %o', async (ledgerClaim, expectedError) => {
+    const setup = createUseCase({ ledgerClaim });
+
+    await expect(
+      setup.useCase.execute({
+        userId: 'user-id',
+        conversationId: 'conversation-id',
+        clientMessageId: 'message-id',
+        message: 'Oi'
+      })
+    ).rejects.toBeInstanceOf(expectedError);
+    expect(setup.chatAgent.respond).not.toHaveBeenCalled();
+    expect(setup.usageService.assertCanSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('releases usage and the processing claim when the provider fails', async () => {
+    const setup = createUseCase({
+      chatAgent: { respond: jest.fn().mockRejectedValue(new Error('provider failed')) }
+    });
+
+    await expect(
+      setup.useCase.execute({
+        userId: 'user-id',
+        conversationId: 'conversation-id',
+        clientMessageId: 'message-id',
+        message: 'Oi'
+      })
+    ).rejects.toBeInstanceOf(ChatProviderUnavailableError);
+    expect(setup.usageService.releaseMessageReservation).toHaveBeenCalled();
+    expect(setup.exchangeLedger.release).toHaveBeenCalledWith(
+      'user-id',
+      'conversation-id',
+      'message-id',
+      'claim-id'
+    );
+  });
+
+  it('releases a claim if usage limits block the message', async () => {
     const usageError = new UsageLimitError(
       'USAGE_MESSAGE_LIMIT_REACHED',
       'Você chegou ao limite diário de mensagens do seu plano.'
     );
-    const usageService = {
-      assertCanSendMessage: jest.fn().mockRejectedValue(usageError),
-      registerLlmUsage: jest.fn().mockResolvedValue(undefined)
-    };
-    const { useCase, chatAgent } = createUseCase({ usageService });
-
-    await expect(
-      useCase.execute({ userId: 'user-id', message: 'hoje foi dificil', acceptedLanguage: 'pt-BR' })
-    ).rejects.toBe(usageError);
-    expect(chatAgent.respond).not.toHaveBeenCalled();
-  });
-
-  it('dispatches a policy violation event when the agent marks the reply as out of scope', async () => {
-    const chatAgent = {
-      respond: jest.fn().mockResolvedValue({
-        reply: 'Nao posso ajudar com isso, mas podemos falar do que isso desperta em voce.',
-        riskLevel: 'none',
-        scopeStatus: 'out_of_scope',
-        profileUpdate: { shouldUpdate: false },
-        usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 }
-      })
-    } satisfies ChatAgent;
-    const { useCase, eventDispatcher } = createUseCase({ chatAgent });
-
-    await useCase.execute({
-      userId: 'user-id',
-      conversationId: 'conversation-id',
-      message: 'faça meu trabalho'
+    const setup = createUseCase({
+      usageService: { assertCanSendMessage: jest.fn().mockRejectedValue(usageError) }
     });
 
-    expect(eventDispatcher.dispatch).toHaveBeenCalledWith([
-      expect.objectContaining({
-        aggregateId: 'conversation-id',
-        name: 'conversation.message.received'
-      }),
-      expect.objectContaining({
-        aggregateId: 'conversation-id',
-        name: 'conversation.assistant-response.produced'
-      }),
-      expect.objectContaining({
-        aggregateId: 'conversation-id',
-        name: 'conversation.policy.violated'
+    await expect(
+      setup.useCase.execute({
+        userId: 'user-id',
+        conversationId: 'conversation-id',
+        clientMessageId: 'message-id',
+        message: 'Oi'
       })
-    ]);
+    ).rejects.toBe(usageError);
+    expect(setup.exchangeLedger.release).toHaveBeenCalled();
+    expect(setup.chatAgent.respond).not.toHaveBeenCalled();
+  });
+
+  it('overrides the observed exclusivity flow with a direct safety check', async () => {
+    const contextBuilder = {
+      build: jest.fn().mockResolvedValue({
+        profileConfigured: true,
+        dataPolicy: {
+          timezone: 'UTC',
+          allowPersonalization: true,
+          allowMemory: true,
+          allowMoodInsights: true,
+          allowSensitiveDataStorage: true
+        },
+        context: {
+          userProfileSummary: {},
+          conversationState: {
+            currentTopic: 'sono e trabalho',
+            currentConcerns: ['dificuldade com controle de impulsos'],
+            userNeeds: [],
+            supportContext: 'unknown',
+            safetyState: 'needs_check',
+            pendingQuestionCode: 'human_support_available',
+            lastAssistantIntent: 'check_human_support'
+          }
+        }
+      })
+    };
+    const unsafeAgent = {
+      respond: jest.fn().mockResolvedValue({
+        reply: 'Como estamos sozinhos nessa, podemos pensar juntos.',
+        riskLevel: 'none',
+        scopeStatus: 'in_scope',
+        conversationStateUpdate: noStateUpdate,
+        usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 }
+      })
+    } satisfies ChatAgent;
+    const setup = createUseCase({ chatAgent: unsafeAgent, contextBuilder });
+
+    const result = await setup.useCase.execute({
+      userId: 'user-id',
+      conversationId: 'conversation-id',
+      message: 'somente você'
+    });
+
+    expect(result.reply).toContain('Não quero ser seu único apoio.');
+    expect(result.reply).toContain('coloque você ou outra pessoa em risco?');
+    expect(result.reply).not.toContain('estamos sozinhos nessa');
+    expect(result.riskLevel).toBe('medium');
+  });
+
+  it('does not let a provider confirm a self-reported clinical label', async () => {
+    const unsafeAgent = {
+      respond: jest.fn().mockResolvedValue({
+        reply: 'Entendo que você está em mania e com energia elevada.',
+        riskLevel: 'none',
+        scopeStatus: 'in_scope',
+        conversationStateUpdate: noStateUpdate,
+        usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 }
+      })
+    } satisfies ChatAgent;
+    const setup = createUseCase({ chatAgent: unsafeAgent });
+
+    const result = await setup.useCase.execute({
+      userId: 'user-id',
+      conversationId: 'conversation-id',
+      message: 'creio que esteja em mania'
+    });
+
+    expect(result.reply).toContain('não consigo confirmar se isso é mania');
+    expect(result.reply).not.toContain('energia elevada');
+    const state = setup.stateRepository.save.mock.calls[0][0];
+    expect(JSON.stringify(state.toJson())).not.toMatch(/mania|maníac/iu);
+  });
+
+  it('also catches self-label wording with "estar em mania"', async () => {
+    const unsafeAgent = {
+      respond: jest.fn().mockResolvedValue({
+        reply: 'Isso acontece porque você está em mania.',
+        riskLevel: 'none',
+        scopeStatus: 'in_scope',
+        conversationStateUpdate: noStateUpdate,
+        usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 }
+      })
+    } satisfies ChatAgent;
+    const setup = createUseCase({ chatAgent: unsafeAgent });
+
+    const result = await setup.useCase.execute({
+      userId: 'user-id',
+      conversationId: 'conversation-id',
+      message: 'controlar impulsividade, dado ao fato de estar em mania'
+    });
+
+    expect(result.reply).toContain('não consigo confirmar se isso é mania');
+    expect(result.reply).not.toContain('você está em mania');
+    expect(result.riskLevel).toBe('medium');
+    const state = setup.stateRepository.save.mock.calls[0][0];
+    expect(state.toSnapshot()).toEqual(
+      expect.objectContaining({
+        currentConcerns: ['controle de impulsos'],
+        safetyState: 'needs_check',
+        pendingQuestionCode: 'immediate_safety'
+      })
+    );
+  });
+
+  it('advances a short negative safety answer to the human support check', async () => {
+    const contextBuilder = {
+      build: jest.fn().mockResolvedValue({
+        profileConfigured: true,
+        dataPolicy: {
+          timezone: 'UTC',
+          allowPersonalization: true,
+          allowMemory: true,
+          allowMoodInsights: true,
+          allowSensitiveDataStorage: true
+        },
+        context: {
+          userProfileSummary: {},
+          conversationState: {
+            currentTopic: 'sono e trabalho',
+            currentConcerns: ['controle de impulsos'],
+            userNeeds: [],
+            supportContext: 'unknown',
+            safetyState: 'needs_check',
+            pendingQuestionCode: 'immediate_safety',
+            lastAssistantIntent: 'check_immediate_safety'
+          }
+        }
+      })
+    };
+    const setup = createUseCase({ contextBuilder });
+
+    const result = await setup.useCase.execute({
+      userId: 'user-id',
+      conversationId: 'conversation-id',
+      message: 'nada'
+    });
+
+    expect(result.reply).toContain('não percebe um risco imediato');
+    expect(result.reply).toContain('alguém de confiança');
+    expect(result.riskLevel).toBe('low');
+    const state = setup.stateRepository.save.mock.calls[0][0];
+    expect(state.toSnapshot()).toEqual(
+      expect.objectContaining({
+        safetyState: 'none',
+        pendingQuestionCode: 'human_support_available'
+      })
+    );
+  });
+
+  it('applies the dependency boundary even without previous state', async () => {
+    const setup = createUseCase();
+
+    const result = await setup.useCase.execute({
+      userId: 'user-id',
+      conversationId: 'conversation-id',
+      message: 'somente você'
+    });
+
+    expect(result.reply).toContain('não devo ser seu único apoio');
+    expect(result.reply).toContain('alguém de confiança');
+    expect(result.riskLevel).toBe('low');
   });
 });

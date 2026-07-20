@@ -32,6 +32,12 @@ export interface UsageSummary {
   periodEnd: string;
 }
 
+export interface UsageMessageReservation {
+  usageId: string;
+  dailyTokenLimit: number;
+  dailyMessageLimit: number;
+}
+
 export interface UsageLimitErrorDetails {
   plan?: PlanType;
   periodEnd?: string;
@@ -85,8 +91,13 @@ export class UsageService {
 
     if (existingUsage) {
       if (existingUsage.plan !== effectivePlan) {
-        existingUsage.updatePlan(effectivePlan, now);
-        await this.usageRepository.save(existingUsage);
+        return (
+          (await this.usageRepository.updatePlanAtomic(
+            existingUsage.id.value,
+            effectivePlan,
+            now
+          )) ?? existingUsage
+        );
       }
 
       return existingUsage;
@@ -101,8 +112,7 @@ export class UsageService {
     });
 
     await this.usageRepository.save(usage);
-
-    return usage;
+    return (await this.usageRepository.findActiveByUserId(userId, now)) ?? usage;
   }
 
   async getUsageSummary(userId: string): Promise<UsageSummary> {
@@ -112,7 +122,7 @@ export class UsageService {
     return this.buildUsageSummary(usage, planDefinition);
   }
 
-  async assertCanSendMessage(userId: string, message: string): Promise<void> {
+  async assertCanSendMessage(userId: string, message: string): Promise<UsageMessageReservation> {
     const usage = await this.getCurrentUsage(userId);
     const planDefinition = await this.resolvePlanDefinitionOrBlock(usage);
 
@@ -145,16 +155,81 @@ export class UsageService {
         planDefinition
       });
     }
+
+    const now = this.nowProvider();
+    const reserved = await this.usageRepository.reserveMessageAtomic({
+      usageId: usage.id.value,
+      dailyTokenLimit: planDefinition.dailyTokenLimit,
+      dailyMessageLimit: planDefinition.dailyMessageLimit,
+      lockPeriodEnd: getLockedPeriodEnd(now),
+      updatedAt: now
+    });
+    if (!reserved) {
+      const current = (await this.usageRepository.findActiveByUserId(userId, now)) ?? usage;
+      const tokenLimitReached = current.totalTokens >= planDefinition.dailyTokenLimit;
+      await this.blockWithUsageError(current, {
+        code: tokenLimitReached ? 'USAGE_TOKEN_LIMIT_REACHED' : 'USAGE_MESSAGE_LIMIT_REACHED',
+        message: tokenLimitReached
+          ? 'Você chegou ao limite diário de uso do seu plano. Para manter a experiência estável, novas mensagens estarão disponíveis no próximo ciclo.'
+          : 'Você chegou ao limite diário do seu plano. Você pode continuar amanhã ou escolher um plano com mais conversas.',
+        planDefinition
+      });
+      throw new Error('Usage limit handling did not throw');
+    }
+
+    return {
+      usageId: reserved.id.value,
+      dailyTokenLimit: planDefinition.dailyTokenLimit,
+      dailyMessageLimit: planDefinition.dailyMessageLimit
+    };
+  }
+
+  async releaseMessageReservation(reservation: UsageMessageReservation): Promise<void> {
+    await this.usageRepository.releaseMessageAtomic(reservation.usageId, this.nowProvider());
+  }
+
+  async registerReservedLlmUsage(
+    reservation: UsageMessageReservation,
+    llmUsage: LlmUsage
+  ): Promise<void> {
+    const now = this.nowProvider();
+    await this.usageRepository.registerLlmUsageAtomic({
+      usageId: reservation.usageId,
+      usage: llmUsage,
+      incrementMessageCount: false,
+      dailyTokenLimit: reservation.dailyTokenLimit,
+      dailyMessageLimit: reservation.dailyMessageLimit,
+      lockPeriodEnd: getLockedPeriodEnd(now),
+      updatedAt: now
+    });
   }
 
   async registerLlmUsage(userId: string, llmUsage: LlmUsage): Promise<void> {
+    await this.registerUsage(userId, llmUsage, true);
+  }
+
+  async registerAuxiliaryLlmUsage(userId: string, llmUsage: LlmUsage): Promise<void> {
+    await this.registerUsage(userId, llmUsage, false);
+  }
+
+  private async registerUsage(
+    userId: string,
+    llmUsage: LlmUsage,
+    incrementMessageCount: boolean
+  ): Promise<void> {
     const usage = await this.getCurrentUsage(userId);
     const planDefinition = this.resolvePlanDefinition(usage.plan);
     const now = this.nowProvider();
 
-    usage.registerLlmUsage(llmUsage, now);
-    this.alignResetWindowIfLimitReached(usage, planDefinition, now);
-    await this.usageRepository.save(usage);
+    await this.usageRepository.registerLlmUsageAtomic({
+      usageId: usage.id.value,
+      usage: llmUsage,
+      incrementMessageCount,
+      dailyTokenLimit: planDefinition.dailyTokenLimit,
+      dailyMessageLimit: planDefinition.dailyMessageLimit,
+      lockPeriodEnd: getLockedPeriodEnd(now),
+      updatedAt: now
+    });
   }
 
   private resolvePlanDefinition(plan: PlanType): PlanDefinition {
@@ -180,12 +255,14 @@ export class UsageService {
       return this.resolvePlanDefinition(usage.plan);
     } catch (error) {
       if (error instanceof UsageLimitError && error.code === 'INVALID_PLAN') {
-        usage.incrementBlocked(this.nowProvider());
-        await this.usageRepository.save(usage);
+        const now = this.nowProvider();
+        const updated =
+          (await this.usageRepository.registerBlockedAtomic(usage.id.value, undefined, now)) ??
+          usage;
 
         throw new UsageLimitError(error.code, error.message, {
-          plan: usage.plan,
-          periodEnd: usage.periodEnd.toISOString()
+          plan: updated.plan,
+          periodEnd: updated.periodEnd.toISOString()
         });
       }
 
@@ -204,14 +281,18 @@ export class UsageService {
   ): Promise<never> {
     const now = this.nowProvider();
 
-    usage.incrementBlocked(now);
-    this.alignResetWindowIfLimitReached(usage, input.planDefinition, now);
-    await this.usageRepository.save(usage);
+    const hasReachedMessageLimit = usage.messageCount >= input.planDefinition.dailyMessageLimit;
+    const hasReachedTokenLimit = usage.totalTokens >= input.planDefinition.dailyTokenLimit;
+    const lockPeriodEnd =
+      hasReachedMessageLimit || hasReachedTokenLimit ? getLockedPeriodEnd(now) : undefined;
+    const updated =
+      (await this.usageRepository.registerBlockedAtomic(usage.id.value, lockPeriodEnd, now)) ??
+      usage;
 
     throw new UsageLimitError(input.code, input.message, {
-      plan: usage.plan,
-      periodEnd: usage.periodEnd.toISOString(),
-      usage: this.buildUsageSummary(usage, input.planDefinition),
+      plan: updated.plan,
+      periodEnd: updated.periodEnd.toISOString(),
+      usage: this.buildUsageSummary(updated, input.planDefinition),
       ...input.details
     });
   }
@@ -233,21 +314,6 @@ export class UsageService {
       remainingMessages: Math.max(0, planDefinition.dailyMessageLimit - usage.messageCount),
       periodEnd: usage.periodEnd.toISOString()
     };
-  }
-
-  private alignResetWindowIfLimitReached(
-    usage: UserDailyUsage,
-    planDefinition: PlanDefinition,
-    referenceDate: Date
-  ): void {
-    const hasReachedMessageLimit = usage.messageCount >= planDefinition.dailyMessageLimit;
-    const hasReachedTokenLimit = usage.totalTokens >= planDefinition.dailyTokenLimit;
-
-    if (!hasReachedMessageLimit && !hasReachedTokenLimit) {
-      return;
-    }
-
-    usage.lockUntil(getLockedPeriodEnd(referenceDate), referenceDate);
   }
 }
 

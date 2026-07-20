@@ -1,29 +1,25 @@
 import { parseChatAgentResponse } from '../../../infrastructure/chat/structured-output/chat-agent-response.parser';
 
-const validProfileUpdate = {
+const validStateUpdate = {
   shouldUpdate: true,
-  currentContextSummary: 'Contexto atual.',
-  recurringThemesToAdd: ['trabalho'],
-  emotionalPatternsToAdd: ['sobrecarga'],
-  routineNotesToAdd: ['dorme tarde'],
-  helpfulStrategiesToAdd: ['pausas curtas'],
-  unhelpfulStrategiesToAdd: ['adiar descanso'],
-  boundariesToAdd: ['prefere respostas curtas']
+  currentTopic: 'sono e sobrecarga de trabalho',
+  currentConcerns: ['controle de impulsos'],
+  userNeeds: ['apoio humano'],
+  supportContext: 'none_reported',
+  safetyState: 'needs_check',
+  pendingQuestionCode: 'immediate_safety',
+  lastAssistantIntent: 'check_immediate_safety'
 };
 
 describe('parseChatAgentResponse', () => {
-  it('normalizes structured output wrapped in markdown fences', () => {
+  it('normalizes a structured response with ephemeral state', () => {
     const response = parseChatAgentResponse(
-      [
-        '```json',
-        JSON.stringify({
-          reply: '  Resposta acolhedora.  ',
-          riskLevel: 'low',
-          scopeStatus: 'in_scope',
-          profileUpdate: validProfileUpdate
-        }),
-        '```'
-      ].join('\n'),
+      `\`\`\`json\n${JSON.stringify({
+        reply: '  Resposta acolhedora.  ',
+        riskLevel: 'low',
+        scopeStatus: 'in_scope',
+        conversationStateUpdate: validStateUpdate
+      })}\n\`\`\``,
       'Provider'
     );
 
@@ -31,48 +27,43 @@ describe('parseChatAgentResponse', () => {
       reply: 'Resposta acolhedora.',
       riskLevel: 'low',
       scopeStatus: 'in_scope',
-      profileUpdate: validProfileUpdate
+      conversationStateUpdate: validStateUpdate
     });
   });
 
-  it('repairs trailing commas from provider JSON output', () => {
+  it('repairs trailing commas without accepting the retired profileUpdate contract', () => {
     const response = parseChatAgentResponse(
       [
         '{',
         '"reply": "Resposta.",',
         '"riskLevel": "none",',
         '"scopeStatus": "in_scope",',
-        '"profileUpdate": {',
+        '"conversationStateUpdate": {',
         '"shouldUpdate": false,',
-        '"currentContextSummary": null,',
-        '"recurringThemesToAdd": [],',
-        '"emotionalPatternsToAdd": [],',
-        '"routineNotesToAdd": [],',
-        '"helpfulStrategiesToAdd": [],',
-        '"unhelpfulStrategiesToAdd": [],',
-        '"boundariesToAdd": [],',
+        '"currentTopic": null,',
+        '"currentConcerns": [],',
+        '"userNeeds": [],',
+        '"supportContext": "unknown",',
+        '"safetyState": "none",',
+        '"pendingQuestionCode": "none",',
+        '"lastAssistantIntent": "listen",',
         '},',
         '}'
       ].join('\n'),
       'Provider'
     );
 
-    expect(response).toMatchObject({
-      reply: 'Resposta.',
-      riskLevel: 'none',
-      scopeStatus: 'in_scope',
-      profileUpdate: { shouldUpdate: false }
-    });
+    expect(response.conversationStateUpdate.shouldUpdate).toBe(false);
   });
 
-  it('rejects invalid canonical risk and scope values', () => {
+  it('rejects invalid state enums and legacy profile updates', () => {
     expect(() =>
       parseChatAgentResponse(
         JSON.stringify({
           reply: 'Resposta.',
-          riskLevel: 'critical',
+          riskLevel: 'none',
           scopeStatus: 'in_scope',
-          profileUpdate: validProfileUpdate
+          profileUpdate: { shouldUpdate: false }
         }),
         'Provider'
       )

@@ -5,7 +5,6 @@ import {
   PlanType,
   SubscriptionStatus
 } from '../../plans/plan-definition';
-import { Entity } from '../../core/entity';
 import { Uuid } from '../../shared/uuid.vo';
 
 export interface UserSubscriptionProps {
@@ -28,12 +27,13 @@ export interface UserSubscriptionProps {
   updatedAt: Date;
 }
 
-export class UserSubscription extends Entity<UserSubscriptionProps> {
+export class UserSubscription {
+  readonly id: Uuid;
+
   private constructor(
     private readonly props: UserSubscriptionProps,
     id?: Uuid
   ) {
-    super();
     this.id = id ?? Uuid.create();
   }
 

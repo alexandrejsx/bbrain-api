@@ -1,16 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { EventEmitterModule } from '@nestjs/event-emitter';
 import config from './config';
-import { AuthModule } from './modules/auth.module';
-import { ConversationModule } from './modules/conversation.module';
-import { EventsModule } from './modules/events.module';
-import { InsightsModule } from './modules/insights.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { InsightsModule } from './modules/insights/insights.module';
 import { MongodbModule } from './modules/mongodb.module';
-import { PlansModule } from './modules/plans.module';
-import { ProfileModule } from './modules/profile.module';
-import { UsersModule } from './modules/users.module';
-import { WellbeingHistoryModule } from './modules/wellbeing-history.module';
+import { BillingModule } from './modules/billing/billing.module';
+import { ProfileModule } from './modules/users/profile.module';
+import { UsersModule } from './modules/users/users.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { WellbeingModule } from './modules/wellbeing/wellbeing.module';
 
 @Module({
   imports: [
@@ -19,16 +17,14 @@ import { WellbeingHistoryModule } from './modules/wellbeing-history.module';
       isGlobal: true,
       load: [config]
     }),
-    EventEmitterModule.forRoot(),
     MongodbModule,
-    EventsModule,
     UsersModule,
     AuthModule,
-    ConversationModule,
+    ChatModule,
     InsightsModule,
-    PlansModule,
+    BillingModule,
     ProfileModule,
-    WellbeingHistoryModule
+    WellbeingModule
   ]
 })
 export class AppModule {}

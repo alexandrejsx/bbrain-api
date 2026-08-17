@@ -1,9 +1,9 @@
 import { randomUUID } from 'crypto';
-import { ValueObject } from '../core/value-object';
+export class Uuid {
+  readonly value: string;
 
-export class Uuid extends ValueObject<string> {
   constructor(value?: string) {
-    super(value ?? randomUUID());
+    this.value = value ?? randomUUID();
 
     if (!this.isValid(this.value)) {
       throw new Error('Invalid UUID');

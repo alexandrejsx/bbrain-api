@@ -1,6 +1,3 @@
-import { AggregateRoot } from '../../core/aggregate-root';
-import { UserCreatedEvent } from '../events/user-created.event';
-import { UserLoggedInEvent } from '../events/user-logged-in.event';
 import type { UserProfileSnapshot } from './user-profile.types';
 import { Email } from '../value-objects/email.vo';
 import { UserName } from '../value-objects/user-name.vo';
@@ -37,12 +34,13 @@ export interface UserProps {
   accountScheduledDeletionAt?: Date;
 }
 
-export class User extends AggregateRoot<UserProps> {
+export class User {
+  readonly id: Uuid;
+
   private constructor(
     private readonly props: UserProps,
     id?: Uuid
   ) {
-    super();
     this.id = id ?? Uuid.create();
   }
 
@@ -73,15 +71,12 @@ export class User extends AggregateRoot<UserProps> {
       id
     );
 
-    user.addDomainEvent(new UserCreatedEvent(user.id.value));
-
     return user;
   }
 
   markLoggedIn(date = new Date()): void {
     this.props.lastLoginAt = date;
     this.props.updatedAt = date;
-    this.addDomainEvent(new UserLoggedInEvent(this.id.value));
   }
 
   updateBasicInfo(

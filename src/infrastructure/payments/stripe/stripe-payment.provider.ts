@@ -8,7 +8,7 @@ import {
   StripeSubscriptionSnapshot,
   StripeWebhookEvent,
   StripeWebhookEventData
-} from '../../../use-cases/billing/ports/payment-provider.port';
+} from '../../../modules/billing/payment-provider.port';
 
 export class StripePaymentProvider implements StripePaymentPort {
   private readonly stripe: Stripe | null;
@@ -42,7 +42,6 @@ export class StripePaymentProvider implements StripePaymentPort {
       subscription_data: {
         metadata: input.metadata
       }
-      // Stripe Dashboard controls card, Apple Pay, Google Pay and Link availability.
     });
 
     if (!session.url) {

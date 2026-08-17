@@ -13,14 +13,19 @@ export class EmailService {
   constructor(private readonly configService: ConfigService) {}
 
   async send(message: EmailMessage): Promise<void> {
-    const provider = this.configService.get<'log' | 'resend'>('email.provider') || 'log';
+    const provider = this.configService.get<'log' | 'resend'>('email.provider');
 
     if (provider === 'resend') {
       await this.sendWithResend(message);
       return;
     }
 
-    this.logEmail(message);
+    if (provider === 'log') {
+      this.logEmail();
+      return;
+    }
+
+    throw new Error('Email provider is not configured');
   }
 
   private async sendWithResend(message: EmailMessage): Promise<void> {
@@ -29,8 +34,7 @@ export class EmailService {
     const fromName = this.configService.get<string>('email.fromName') || 'BBrain';
 
     if (!apiKey || !fromEmail) {
-      this.logEmail(message);
-      return;
+      throw new Error('Email provider credentials are incomplete');
     }
 
     const response = await fetch('https://api.resend.com/emails', {
@@ -49,19 +53,16 @@ export class EmailService {
     });
 
     if (!response.ok) {
-      const details = await response.text();
-      throw new Error(`Failed to send email with Resend: ${details || response.statusText}`);
+      throw new Error(`Email provider request failed status=${response.status}`);
     }
   }
 
-  private logEmail(message: EmailMessage): void {
+  private logEmail(): void {
     console.log(
       JSON.stringify(
         {
           type: 'email-preview',
-          to: message.to,
-          subject: message.subject,
-          text: message.text
+          delivery: 'suppressed'
         },
         null,
         2

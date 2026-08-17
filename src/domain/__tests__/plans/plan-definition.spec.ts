@@ -6,7 +6,7 @@ import {
   PLAN_DEFINITIONS,
   PlanType
 } from '../../plans/plan-definition';
-import { PlansService } from '../../../use-cases/plans/plans.service';
+import { PlansService } from '../../../modules/billing/plans.service';
 
 describe('Plan definitions', () => {
   it('defines the initial account plans', () => {

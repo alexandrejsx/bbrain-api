@@ -2,7 +2,7 @@
   "name": "bbrain-api",
   "version": "0.1.0",
   "private": true,
-  "description": "API backend do BBrain para acompanhamento psicológico digital com IA.",
+  "description": "API do BBrain para apoio reflexivo, autoconhecimento e bem-estar assistidos por IA.",
   "packageManager": "pnpm@10.34.1",
   "license": "UNLICENSED",
   "scripts": {
@@ -23,7 +23,6 @@
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.1",
-    "@nestjs/event-emitter": "^3.0.0",
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/mongoose": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",

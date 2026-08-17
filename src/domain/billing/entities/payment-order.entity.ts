@@ -6,7 +6,6 @@ import {
   PaymentStatus,
   PlanType
 } from '../../plans/plan-definition';
-import { Entity } from '../../core/entity';
 import { Uuid } from '../../shared/uuid.vo';
 
 export interface PaymentOrderProps {
@@ -33,12 +32,13 @@ export interface PaymentOrderProps {
   updatedAt: Date;
 }
 
-export class PaymentOrder extends Entity<PaymentOrderProps> {
+export class PaymentOrder {
+  readonly id: Uuid;
+
   private constructor(
     private readonly props: PaymentOrderProps,
     id?: Uuid
   ) {
-    super();
     this.id = id ?? Uuid.create();
   }
 

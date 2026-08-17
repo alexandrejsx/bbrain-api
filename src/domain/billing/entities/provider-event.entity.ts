@@ -1,4 +1,3 @@
-import { Entity } from '../../core/entity';
 import { PaymentProviderType } from '../../plans/plan-definition';
 import { Uuid } from '../../shared/uuid.vo';
 
@@ -10,12 +9,13 @@ export interface ProviderEventProps {
   createdAt: Date;
 }
 
-export class ProviderEvent extends Entity<ProviderEventProps> {
+export class ProviderEvent {
+  readonly id: Uuid;
+
   private constructor(
     private readonly props: ProviderEventProps,
     id?: Uuid
   ) {
-    super();
     this.id = id ?? Uuid.create();
   }
 

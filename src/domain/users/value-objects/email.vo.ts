@@ -1,9 +1,9 @@
-import { ValueObject } from '../../core/value-object';
+export class Email {
+  readonly value: string;
 
-export class Email extends ValueObject<string> {
   constructor(value: string) {
     const normalized = value.trim().toLowerCase();
-    super(normalized);
+    this.value = normalized;
 
     if (!this.isValid(normalized)) {
       throw new Error('Invalid email');

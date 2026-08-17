@@ -18,9 +18,9 @@ import type { UserProfileSnapshot } from '../../users/entities/user-profile.type
 import { UserRepository } from '../../users/repositories/user.repository';
 import { Email } from '../../users/value-objects/email.vo';
 import { UserName } from '../../users/value-objects/user-name.vo';
-import { BillingService } from '../../../use-cases/billing/billing.service';
-import { PlanChangeCalculatorService } from '../../../use-cases/billing/plan-change-calculator.service';
-import { PlansService } from '../../../use-cases/plans/plans.service';
+import { BillingService } from '../../../modules/billing/billing.service';
+import { PlanChangeCalculatorService } from '../../../modules/billing/plan-change-calculator.service';
+import { PlansService } from '../../../modules/billing/plans.service';
 
 class InMemoryUserRepository implements UserRepository {
   readonly users = new Map<string, User>();

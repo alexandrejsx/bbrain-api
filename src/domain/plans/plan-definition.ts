@@ -146,7 +146,7 @@ export const PLAN_DEFINITIONS: Record<PlanType, PlanDefinition> = {
       'Mais mensagens por dia',
       'Maior contexto nas conversas',
       'Melhor continuidade entre conversas',
-      'Preparado para diário e insights futuros'
+      'Preparado para histórico estruturado e insights futuros'
     ],
     prices: {
       [BillingCurrency.BRL]: {

@@ -1,4 +1,3 @@
-import { Entity } from '../../core/entity';
 import { PlanType } from '../../plans/plan-definition';
 import { Uuid } from '../../shared/uuid.vo';
 import { LlmUsage, normalizeLlmUsage } from '../value-objects/llm-usage';
@@ -18,12 +17,13 @@ export interface UserDailyUsageProps {
   updatedAt: Date;
 }
 
-export class UserDailyUsage extends Entity<UserDailyUsageProps> {
+export class UserDailyUsage {
+  readonly id: Uuid;
+
   private constructor(
     private readonly props: UserDailyUsageProps,
     id?: Uuid
   ) {
-    super();
     this.id = id ?? Uuid.create();
   }
 

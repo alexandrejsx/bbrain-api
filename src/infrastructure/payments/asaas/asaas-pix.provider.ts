@@ -6,7 +6,7 @@ import {
   AsaasPixChargeResult,
   AsaasPixPaymentPort,
   AsaasWebhookEvent
-} from '../../../use-cases/billing/ports/payment-provider.port';
+} from '../../../modules/billing/payment-provider.port';
 
 type HeaderBag = Record<string, string | string[] | undefined>;
 
@@ -45,7 +45,6 @@ export class AsaasPixProvider implements AsaasPixPaymentPort {
         dueDate: toDateOnly(input.expiresAt),
         description: `BBrain ${input.order.plan} ${input.order.billingInterval}`,
         externalReference: input.order.id.value
-        // TODO: avaliar callback/redirect do Asaas quando o fluxo Pix migrar para uma tela hospedada.
       })
     });
     const providerPaymentId = payment.id ?? input.order.id.value;
@@ -139,7 +138,6 @@ export class AsaasPixProvider implements AsaasPixPaymentPort {
         mobilePhone: sanitizePhone(user.phone),
         externalReference: user.id.value,
         notificationDisabled: true
-        // TODO: incluir cpfCnpj quando o onboarding coletar o documento do usuário para produção.
       })
     });
 

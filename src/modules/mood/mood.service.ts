@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { MoodRepository } from './mood.repository';
 import {
   InvalidWellbeingRecordError,
-  TemporalReference,
   WellbeingNotFoundError,
   WellbeingRecord
 } from '../wellbeing/wellbeing.types';
@@ -47,68 +46,47 @@ export class MoodService {
     return record;
   }
 
-  async createFromChat(input: {
+  async createFromGuidedCheckIn(input: {
     userId: string;
-    sessionId: string;
+    checkInId: string;
     sourceEventId: string;
     capturedAt: Date;
     timezone: string;
-    confidence: number;
-    data: {
-      primaryEmotion: string;
-      secondaryEmotions: string[];
-      intensity: number | null;
-      energy: number | null;
-      valence: number | null;
-      occurredAt: string | null;
-      period: string | null;
-      context: string | null;
-    };
-    extractorVersion: string;
+    localDate: string;
+    score: number;
+    scoreConfidence: number;
+    note: string | null;
     promptVersion: string;
-  }): Promise<void> {
-    const descriptors = [input.data.primaryEmotion, ...input.data.secondaryEmotions];
-    const data = normalizeMoodData(
-      {
-        primaryEmotion: input.data.primaryEmotion,
-        secondaryEmotions: input.data.secondaryEmotions,
-        descriptors,
-        intensity: input.data.intensity,
-        energy: input.data.energy,
-        valence: input.data.valence,
-        context: input.data.context,
-        ...(input.data.intensity === null
-          ? {}
-          : { explicitIntensity: { value: input.data.intensity, scaleMin: 0, scaleMax: 10 } })
-      },
-      'mood_event'
-    );
-    const temporalReference = automaticTemporal(
-      input.data.occurredAt,
-      input.data.period,
-      input.timezone,
-      input.capturedAt
-    );
+  }): Promise<WellbeingRecord> {
+    const data = normalizeMoodData({ moodScore: input.score, note: input.note }, 'mood_event');
     const provenance = {
-      source: 'conversation_extraction' as const,
-      sourceMessageId: input.sourceEventId,
-      conversationId: input.sessionId,
-      confidence: input.confidence
+      source: 'guided_checkin' as const,
+      checkInId: input.checkInId,
+      localDate: input.localDate,
+      confidenceByField: { moodScore: input.scoreConfidence }
     };
-    await this.repository.create({
+    const record = await this.repository.create({
       userId: input.userId,
       kind: 'mood_event',
       data,
-      temporalReference,
+      temporalReference: {
+        kind: 'specific_day',
+        localDate: input.localDate,
+        timezone: input.timezone,
+        precision: 'exact'
+      },
       provenance,
       provenanceHistory: [provenance],
       revision: 1,
-      sessionId: input.sessionId,
+      sessionId: input.checkInId,
       sourceEventId: input.sourceEventId,
       capturedAt: input.capturedAt,
-      extractorVersion: input.extractorVersion,
       promptVersion: input.promptVersion
     });
+    const existing =
+      record ?? (await this.repository.findBySourceEventId(input.userId, input.sourceEventId));
+    if (!existing) throw new Error('Guided mood idempotency record not found');
+    return existing;
   }
 
   async correct(input: {
@@ -157,13 +135,18 @@ function normalizeMoodData(
   const intensity = finiteNumber(raw.intensity, 0, 10);
   const energy = finiteNumber(raw.energy, 0, 10);
   const valence = finiteNumber(raw.valence, -1, 1);
+  const moodScore = finiteNumber(raw.moodScore, 0, 10);
+  if (moodScore !== undefined && !Number.isInteger(moodScore)) {
+    throw new InvalidWellbeingRecordError();
+  }
   const intensityDescriptor = cleanString(raw.intensityDescriptor, 80);
   if (
     !primaryEmotion &&
     !descriptors.length &&
     !explicitRating &&
     !explicitIntensity &&
-    intensity === undefined
+    intensity === undefined &&
+    moodScore === undefined
   ) {
     throw new InvalidWellbeingRecordError();
   }
@@ -182,6 +165,8 @@ function normalizeMoodData(
     ...(intensity === undefined ? {} : { intensity }),
     ...(energy === undefined ? {} : { energy }),
     ...(valence === undefined ? {} : { valence }),
+    ...(moodScore === undefined ? {} : { moodScore }),
+    ...(cleanString(raw.note, 240) ? { note: cleanString(raw.note, 240) } : {}),
     ...(cleanString(raw.context, 180) ? { context: cleanString(raw.context, 180) } : {}),
     ...(kind === 'mood_daily_summary'
       ? {
@@ -211,27 +196,4 @@ function normalizeRating(value: unknown) {
     return undefined;
   }
   return { value: rating.value, ...(min === undefined ? {} : { scaleMin: min }), scaleMax: max };
-}
-
-function automaticTemporal(
-  occurredAt: string | null,
-  period: string | null,
-  timezone: string,
-  capturedAt: Date
-): TemporalReference {
-  if (occurredAt) {
-    const date = new Date(occurredAt);
-    if (Number.isFinite(date.getTime())) {
-      return { kind: 'moment', at: date.toISOString(), timezone, precision: 'approximate' };
-    }
-  }
-  if (period?.trim()) {
-    return {
-      kind: 'period',
-      descriptor: period.trim().slice(0, 120),
-      timezone,
-      precision: 'approximate'
-    };
-  }
-  return { kind: 'moment', at: capturedAt.toISOString(), timezone, precision: 'approximate' };
 }

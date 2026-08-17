@@ -26,10 +26,10 @@ export type WellbeingProvenance =
   | { source: 'manual' }
   | { source: 'manual_correction'; correctedAt: string }
   | {
-      source: 'conversation_extraction';
-      sourceMessageId: string;
-      conversationId: string;
-      confidence: number;
+      source: 'guided_checkin';
+      checkInId: string;
+      localDate: string;
+      confidenceByField: Record<string, number>;
     };
 
 export interface WellbeingRecord {

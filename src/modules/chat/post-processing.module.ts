@@ -3,8 +3,6 @@ import { AiModule } from '../../ai/ai.module';
 import { PostConversationExtractor } from '../../ai/post-conversation.extractor';
 import { UsersModule } from '../users/users.module';
 import { MemoryModule } from '../memory/memory.module';
-import { MoodModule } from '../mood/mood.module';
-import { SleepModule } from '../sleep/sleep.module';
 import { DataConsentPolicy } from '../users/data-consent.policy';
 import {
   PostConversationProcessor,
@@ -12,7 +10,7 @@ import {
 } from './post-conversation.processor';
 
 @Module({
-  imports: [AiModule, UsersModule, MemoryModule, MoodModule, SleepModule],
+  imports: [AiModule, UsersModule, MemoryModule],
   providers: [
     PostConversationExtractor,
     DataConsentPolicy,

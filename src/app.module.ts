@@ -9,6 +9,7 @@ import { ProfileModule } from './modules/users/profile.module';
 import { UsersModule } from './modules/users/users.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { WellbeingModule } from './modules/wellbeing/wellbeing.module';
+import { DailyCheckInModule } from './modules/daily-check-in/daily-check-in.module';
 
 @Module({
   imports: [
@@ -24,7 +25,8 @@ import { WellbeingModule } from './modules/wellbeing/wellbeing.module';
     InsightsModule,
     BillingModule,
     ProfileModule,
-    WellbeingModule
+    WellbeingModule,
+    DailyCheckInModule
   ]
 })
 export class AppModule {}

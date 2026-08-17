@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { SleepRepository } from './sleep.repository';
 import {
   InvalidWellbeingRecordError,
-  TemporalReference,
   WellbeingNotFoundError,
   WellbeingRecord
 } from '../wellbeing/wellbeing.types';
@@ -45,76 +44,101 @@ export class SleepService {
     return record;
   }
 
-  async createFromChat(input: {
+  async createFromGuidedCheckIn(input: {
     userId: string;
-    sessionId: string;
+    checkInId: string;
     sourceEventId: string;
     capturedAt: Date;
     timezone: string;
-    confidence: number;
+    localDate: string;
     data: {
       durationMinutes: number | null;
-      durationMinMinutes: number | null;
-      durationMaxMinutes: number | null;
-      bedtime: string | null;
-      wakeTime: string | null;
-      quality: string | null;
-      awakenings: number | null;
-      wakeFeeling: string | null;
-      date: string | null;
-      period: string | null;
-      precision: 'exact' | 'approximate';
+      durationConfidence: number | null;
+      durationApproximate: boolean;
+      subjectiveQualityScore: number | null;
+      subjectiveQualityConfidence: number | null;
+      awakeningsCount: number | null;
+      awakeningsConfidence: number | null;
+      awakeningsApproximate: boolean;
+      multipleAwakenings: boolean;
+      awakeDuringNightMinutes: number | null;
+      awakeDuringNightConfidence: number | null;
+      awakeDuringNightApproximate: boolean;
+      restfulnessScore: number | null;
+      restfulnessConfidence: number | null;
+      note: string | null;
     };
-    extractorVersion: string;
     promptVersion: string;
-  }): Promise<void> {
-    const preserved = <T>(value: T) => ({ value, precision: input.data.precision });
+  }): Promise<WellbeingRecord> {
+    const preserved = <T>(value: T, approximate: boolean) => ({
+      value,
+      precision: approximate ? 'approximate' : 'exact'
+    });
     const data = normalizeSleepData({
       ...(input.data.durationMinutes === null
         ? {}
-        : { durationMinutes: preserved(input.data.durationMinutes) }),
-      ...(input.data.durationMinMinutes === null || input.data.durationMaxMinutes === null
+        : {
+            durationMinutes: preserved(input.data.durationMinutes, input.data.durationApproximate)
+          }),
+      ...(input.data.subjectiveQualityScore === null
+        ? {}
+        : { subjectiveQualityScore: input.data.subjectiveQualityScore }),
+      ...(input.data.awakeningsCount === null
         ? {}
         : {
-            durationMinutesRange: {
-              min: input.data.durationMinMinutes,
-              max: input.data.durationMaxMinutes,
-              precision: input.data.precision
-            }
+            awakeningCount: preserved(input.data.awakeningsCount, input.data.awakeningsApproximate)
           }),
-      ...(input.data.bedtime ? { bedtime: preserved(input.data.bedtime) } : {}),
-      ...(input.data.wakeTime ? { wakeTime: preserved(input.data.wakeTime) } : {}),
-      ...(input.data.quality ? { quality: preserved(input.data.quality) } : {}),
-      ...(input.data.awakenings === null
+      ...(input.data.multipleAwakenings ? { multipleAwakenings: true } : {}),
+      ...(input.data.awakeDuringNightMinutes === null
         ? {}
-        : { awakeningCount: preserved(input.data.awakenings) }),
-      ...(input.data.wakeFeeling ? { wakeFeeling: preserved(input.data.wakeFeeling) } : {})
+        : {
+            awakeDuringNightMinutes: preserved(
+              input.data.awakeDuringNightMinutes,
+              input.data.awakeDuringNightApproximate
+            )
+          }),
+      ...(input.data.restfulnessScore === null
+        ? {}
+        : { restfulnessScore: input.data.restfulnessScore }),
+      ...(input.data.note ? { note: input.data.note } : {})
     });
+    const confidenceByField = Object.fromEntries(
+      [
+        ['durationMinutes', input.data.durationConfidence],
+        ['subjectiveQualityScore', input.data.subjectiveQualityConfidence],
+        ['awakeningsCount', input.data.awakeningsConfidence],
+        ['awakeDuringNightMinutes', input.data.awakeDuringNightConfidence],
+        ['restfulnessScore', input.data.restfulnessConfidence]
+      ].filter((item): item is [string, number] => typeof item[1] === 'number')
+    );
     const provenance = {
-      source: 'conversation_extraction' as const,
-      sourceMessageId: input.sourceEventId,
-      conversationId: input.sessionId,
-      confidence: input.confidence
+      source: 'guided_checkin' as const,
+      checkInId: input.checkInId,
+      localDate: input.localDate,
+      confidenceByField
     };
-    await this.repository.create({
+    const record = await this.repository.create({
       userId: input.userId,
       kind: 'sleep_record',
       data,
-      temporalReference: automaticTemporal(
-        input.data.date,
-        input.data.period,
-        input.data.precision,
-        input.timezone
-      ),
+      temporalReference: {
+        kind: 'specific_night',
+        localDate: input.localDate,
+        timezone: input.timezone,
+        precision: 'exact'
+      },
       provenance,
       provenanceHistory: [provenance],
       revision: 1,
-      sessionId: input.sessionId,
+      sessionId: input.checkInId,
       sourceEventId: input.sourceEventId,
       capturedAt: input.capturedAt,
-      extractorVersion: input.extractorVersion,
       promptVersion: input.promptVersion
     });
+    const existing =
+      record ?? (await this.repository.findBySourceEventId(input.userId, input.sourceEventId));
+    if (!existing) throw new Error('Guided sleep idempotency record not found');
+    return existing;
   }
 
   async correct(input: {
@@ -152,15 +176,32 @@ export class SleepService {
 }
 
 function normalizeSleepData(raw: Record<string, unknown>): Record<string, unknown> {
-  const duration = preservedNumber(raw.durationMinutes, 1, 1440, true);
-  const range = preservedRange(raw.durationMinutesRange, 1, 1440);
+  const duration = preservedNumber(raw.durationMinutes, 0, 1440, true);
+  const range = preservedRange(raw.durationMinutesRange, 0, 1440);
   if (duration && range) throw new InvalidWellbeingRecordError();
   const quality = preservedString(raw.quality, 60);
   const bedtime = preservedTime(raw.bedtime);
   const wakeTime = preservedTime(raw.wakeTime);
   const awakeningCount = preservedNumber(raw.awakeningCount, 0, 100, true);
   const wakeFeeling = preservedString(raw.wakeFeeling, 60);
-  if (!duration && !range && !quality && !bedtime && !wakeTime && !awakeningCount && !wakeFeeling) {
+  const subjectiveQualityScore = integer(raw.subjectiveQualityScore, 0, 10);
+  const awakeDuringNightMinutes = preservedNumber(raw.awakeDuringNightMinutes, 0, 1440, true);
+  const restfulnessScore = integer(raw.restfulnessScore, 0, 10);
+  const multipleAwakenings = raw.multipleAwakenings === true;
+  const note = cleanString(raw.note, 240);
+  if (
+    !duration &&
+    !range &&
+    !quality &&
+    !bedtime &&
+    !wakeTime &&
+    !awakeningCount &&
+    !wakeFeeling &&
+    subjectiveQualityScore === undefined &&
+    !awakeDuringNightMinutes &&
+    restfulnessScore === undefined &&
+    !multipleAwakenings
+  ) {
     throw new InvalidWellbeingRecordError();
   }
   return {
@@ -170,7 +211,12 @@ function normalizeSleepData(raw: Record<string, unknown>): Record<string, unknow
     ...(bedtime ? { bedtime } : {}),
     ...(wakeTime ? { wakeTime } : {}),
     ...(awakeningCount ? { awakeningCount } : {}),
-    ...(wakeFeeling ? { wakeFeeling } : {})
+    ...(wakeFeeling ? { wakeFeeling } : {}),
+    ...(subjectiveQualityScore === undefined ? {} : { subjectiveQualityScore }),
+    ...(awakeDuringNightMinutes ? { awakeDuringNightMinutes } : {}),
+    ...(restfulnessScore === undefined ? {} : { restfulnessScore }),
+    ...(multipleAwakenings ? { multipleAwakenings: true } : {}),
+    ...(note ? { note } : {})
   };
 }
 
@@ -220,17 +266,7 @@ function preservedTime(value: unknown) {
     : undefined;
 }
 
-function automaticTemporal(
-  date: string | null,
-  period: string | null,
-  precision: 'exact' | 'approximate',
-  timezone: string
-): TemporalReference {
-  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return { kind: 'specific_night', localDate: date, timezone, precision };
-  }
-  if (period?.trim()) {
-    return { kind: 'period', descriptor: period.trim().slice(0, 120), timezone, precision };
-  }
-  return { kind: 'unknown', timezone };
+function integer(value: unknown, min: number, max: number): number | undefined {
+  const numeric = finiteNumber(value, min, max);
+  return numeric !== undefined && Number.isInteger(numeric) ? numeric : undefined;
 }

@@ -43,7 +43,8 @@ export class GeminiProvider implements AiProvider {
             generationConfig: {
               maxOutputTokens: request.maxOutputTokens,
               responseMimeType: 'application/json',
-              responseJsonSchema: request.outputSchema
+              responseJsonSchema: request.outputSchema,
+              ...(request.role === 'FAST' ? { thinkingConfig: { thinkingLevel: 'MINIMAL' } } : {})
             }
           }),
           signal: AbortSignal.timeout(this.config.get<number>('gemini.timeoutMs') ?? 60_000)

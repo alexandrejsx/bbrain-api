@@ -16,7 +16,7 @@ Antes de adicionar um novo agente, camada arquitetural, framework, banco, pipeli
 
 ## IA e conversa
 
-- O único agente atual é `ConversationAgent`.
+- Os agentes atuais são `ConversationAgent`, para o chat comum, e `DailyCheckInAgent`, exclusivamente para o check-in breve de Humor/Sono no papel `FAST`.
 - Memory, Current Context, Pattern, Mood e Sleep são componentes especializados, não agentes.
 - `ContextBuilder` centraliza preferred name, perfil permitido, diagnóstico formal autorrelatado, Current Context, memories/patterns relevantes e janela recente.
 - A janela recente possui limite pequeno explícito e TTL. Não mantenha transcript completo ou use chat bruto como memória permanente.
@@ -32,7 +32,7 @@ Antes de adicionar um novo agente, camada arquitetural, framework, banco, pipeli
 - Current Context é curto e substituível; Memory é fato consolidado; Pattern exige no mínimo duas evidências independentes coerentes.
 - Não inferir diagnóstico, causa psicológica ou precisão ausente.
 - Mood e Sleep devem continuar editáveis pelo endpoint de histórico usado pelo frontend.
-- Dados automáticos preservam origem, `capturedAt`, `sessionId`, `sourceEventId` e versões úteis, sem texto original.
+- Dados guiados preservam origem, `capturedAt`, `sessionId`, `sourceEventId` e versões úteis, sem texto original. Mood/Sleep nunca são extraídos da conversa comum.
 - `sourceEventId` é a chave de idempotência das extrações. Não o transforme em armazenamento oculto.
 - Não logar mensagens, respostas, prompts completos ou dados emocionais.
 - Exclusão de conta e revogação aplicável devem bloquear processamento e purgar janela, contexto, memória, humor e sono.

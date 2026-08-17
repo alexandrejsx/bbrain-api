@@ -15,6 +15,19 @@ export interface ConversationContext {
   currentContext?: { summary: string; topics: string[]; pendingItems: string[] };
   memories: Array<{ summary: string; kind: string; topics: string[]; eventDate?: string }>;
   patterns: Array<{ summary: string; topics: string[]; evidenceCount: number }>;
+  todayCheckIn?: {
+    localDate: string;
+    mood: null | { score: number; note?: string };
+    sleep: null | {
+      durationMinutes?: { value: number; precision: 'exact' | 'approximate' };
+      subjectiveQualityScore?: number;
+      awakeningCount?: { value: number; precision: 'exact' | 'approximate' };
+      multipleAwakenings?: boolean;
+      awakeDuringNightMinutes?: { value: number; precision: 'exact' | 'approximate' };
+      restfulnessScore?: number;
+      note?: string;
+    };
+  };
   recentMessages: Array<{
     id: string;
     role: 'user' | 'assistant';

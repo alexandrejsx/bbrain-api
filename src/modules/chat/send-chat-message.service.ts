@@ -91,10 +91,7 @@ export class SendChatMessageService {
       }
       await this.requests.complete(input.userId, sessionId, sourceEventId);
 
-      if (
-        output.scopeStatus === 'in_scope' &&
-        (context.consent.canUseConversationData || context.consent.canExtractWellbeing)
-      ) {
+      if (output.scopeStatus === 'in_scope' && context.consent.canUseConversationData) {
         this.postConversation.schedule({
           userId: input.userId,
           sessionId,

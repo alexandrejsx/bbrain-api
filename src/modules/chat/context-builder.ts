@@ -3,6 +3,9 @@ import { UserRepository } from '../../domain/users/repositories/user.repository'
 import { USERS_REPOSITORY } from '../../modules/tokens';
 import { CurrentContextRepository, MemoryRepository } from '../memory/memory.repository';
 import { DataConsentPolicy } from '../users/data-consent.policy';
+import { DailyCheckInRepository } from '../daily-check-in/daily-check-in.repository';
+import { MoodRepository } from '../mood/mood.repository';
+import { SleepRepository } from '../sleep/sleep.repository';
 import { ChatSessionRepository } from './chat-session.repository';
 import { ContextBuildResult } from './conversation-context';
 
@@ -13,6 +16,9 @@ export class ContextBuilder {
     private readonly sessions: ChatSessionRepository,
     private readonly currentContexts: CurrentContextRepository,
     private readonly memories: MemoryRepository,
+    private readonly dailyCheckIns: DailyCheckInRepository,
+    private readonly moods: MoodRepository,
+    private readonly sleep: SleepRepository,
     private readonly consentPolicy: DataConsentPolicy
   ) {}
 
@@ -48,6 +54,25 @@ export class ContextBuilder {
               source: 'user_reported_formal_diagnosis' as const
             }))
         : undefined;
+
+    const todayCheckInSession =
+      consent.canUseConversationData && consent.canExtractWellbeing
+        ? await this.dailyCheckIns.findByUserAndDate(
+            userId,
+            localDateAt(new Date(), consent.timezone)
+          )
+        : null;
+    const [moodRecord, sleepRecord] =
+      todayCheckInSession?.status === 'completed'
+        ? await Promise.all([
+            todayCheckInSession.moodRecordId
+              ? this.moods.findById(userId, todayCheckInSession.moodRecordId)
+              : null,
+            todayCheckInSession.sleepRecordId
+              ? this.sleep.findById(userId, todayCheckInSession.sleepRecordId)
+              : null
+          ])
+        : [null, null];
 
     return {
       profileConfigured: profile?.profileCompleted === true,
@@ -98,6 +123,15 @@ export class ContextBuilder {
           topics: pattern.topics,
           evidenceCount: pattern.evidenceCount
         })),
+        ...(todayCheckInSession?.status === 'completed'
+          ? {
+              todayCheckIn: {
+                localDate: todayCheckInSession.localDate,
+                mood: moodRecord ? publicMood(moodRecord.data) : null,
+                sleep: sleepRecord ? publicSleep(sleepRecord.data) : null
+              }
+            }
+          : {}),
         recentMessages: recentMessages.map((message) => ({
           ...message,
           createdAt: message.createdAt.toISOString()
@@ -105,4 +139,41 @@ export class ContextBuilder {
       }
     };
   }
+}
+
+function localDateAt(referenceAt: Date, timezone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(referenceAt);
+    const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${value.year}-${value.month}-${value.day}`;
+  } catch {
+    return referenceAt.toISOString().slice(0, 10);
+  }
+}
+
+function publicMood(data: Record<string, unknown>) {
+  return typeof data.moodScore === 'number'
+    ? {
+        score: data.moodScore,
+        ...(typeof data.note === 'string' ? { note: data.note } : {})
+      }
+    : null;
+}
+
+function publicSleep(data: Record<string, unknown>) {
+  const allowed = [
+    'durationMinutes',
+    'subjectiveQualityScore',
+    'awakeningCount',
+    'multipleAwakenings',
+    'awakeDuringNightMinutes',
+    'restfulnessScore',
+    'note'
+  ];
+  return Object.fromEntries(Object.entries(data).filter(([key]) => allowed.includes(key)));
 }

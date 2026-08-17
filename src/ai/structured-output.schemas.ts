@@ -20,7 +20,7 @@ const topicArray = {
 export const POST_CONVERSATION_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
-  required: ['currentContext', 'memory', 'pattern', 'mood', 'sleep'],
+  required: ['currentContext', 'memory', 'pattern'],
   properties: {
     currentContext: {
       anyOf: [
@@ -72,84 +72,92 @@ export const POST_CONVERSATION_SCHEMA: Record<string, unknown> = {
           }
         }
       ]
-    },
-    mood: {
-      anyOf: [
-        { type: 'null' },
-        {
-          type: 'object',
-          additionalProperties: false,
-          required: [
-            'primaryEmotion',
-            'secondaryEmotions',
-            'intensity',
-            'energy',
-            'valence',
-            'occurredAt',
-            'period',
-            'context',
-            'confidence'
-          ],
-          properties: {
-            primaryEmotion: { type: 'string', minLength: 1, maxLength: 60 },
-            secondaryEmotions: {
-              type: 'array',
-              maxItems: 4,
-              items: { type: 'string', maxLength: 60 }
-            },
-            intensity: { anyOf: [{ type: 'number', minimum: 0, maximum: 10 }, { type: 'null' }] },
-            energy: { anyOf: [{ type: 'number', minimum: 0, maximum: 10 }, { type: 'null' }] },
-            valence: { anyOf: [{ type: 'number', minimum: -1, maximum: 1 }, { type: 'null' }] },
-            occurredAt: nullableString,
-            period: nullableString,
-            context: nullableString,
-            confidence: { type: 'number', minimum: 0, maximum: 1 }
-          }
-        }
-      ]
-    },
-    sleep: {
-      anyOf: [
-        { type: 'null' },
-        {
-          type: 'object',
-          additionalProperties: false,
-          required: [
-            'durationMinutes',
-            'durationMinMinutes',
-            'durationMaxMinutes',
-            'bedtime',
-            'wakeTime',
-            'quality',
-            'awakenings',
-            'wakeFeeling',
-            'date',
-            'period',
-            'precision',
-            'confidence'
-          ],
-          properties: {
-            durationMinutes: {
-              anyOf: [{ type: 'number', minimum: 1, maximum: 1440 }, { type: 'null' }]
-            },
-            durationMinMinutes: {
-              anyOf: [{ type: 'number', minimum: 1, maximum: 1440 }, { type: 'null' }]
-            },
-            durationMaxMinutes: {
-              anyOf: [{ type: 'number', minimum: 1, maximum: 1440 }, { type: 'null' }]
-            },
-            bedtime: nullableString,
-            wakeTime: nullableString,
-            quality: nullableString,
-            awakenings: { anyOf: [{ type: 'number', minimum: 0, maximum: 100 }, { type: 'null' }] },
-            wakeFeeling: nullableString,
-            date: nullableString,
-            period: nullableString,
-            precision: { type: 'string', enum: ['exact', 'approximate'] },
-            confidence: { type: 'number', minimum: 0, maximum: 1 }
-          }
-        }
-      ]
     }
+  }
+};
+
+const nullableScore = {
+  anyOf: [{ type: 'integer', minimum: 0, maximum: 10 }, { type: 'null' }]
+};
+const nullableConfidence = {
+  anyOf: [{ type: 'number', minimum: 0, maximum: 1 }, { type: 'null' }]
+};
+const nullableNonNegativeInteger = {
+  anyOf: [{ type: 'integer', minimum: 0, maximum: 1440 }, { type: 'null' }]
+};
+
+export const DAILY_CHECK_IN_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['extracted', 'nextQuestion', 'completed', 'requiresSafetyHandoff'],
+  properties: {
+    extracted: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['mood', 'sleep'],
+      properties: {
+        mood: {
+          anyOf: [
+            { type: 'null' },
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: ['score', 'scoreConfidence', 'note'],
+              properties: {
+                score: nullableScore,
+                scoreConfidence: nullableConfidence,
+                note: nullableString
+              }
+            }
+          ]
+        },
+        sleep: {
+          anyOf: [
+            { type: 'null' },
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: [
+                'durationMinutes',
+                'durationConfidence',
+                'durationApproximate',
+                'subjectiveQualityScore',
+                'subjectiveQualityConfidence',
+                'awakeningsCount',
+                'awakeningsConfidence',
+                'awakeningsApproximate',
+                'multipleAwakenings',
+                'awakeDuringNightMinutes',
+                'awakeDuringNightConfidence',
+                'awakeDuringNightApproximate',
+                'restfulnessScore',
+                'restfulnessConfidence',
+                'note'
+              ],
+              properties: {
+                durationMinutes: nullableNonNegativeInteger,
+                durationConfidence: nullableConfidence,
+                durationApproximate: { type: 'boolean' },
+                subjectiveQualityScore: nullableScore,
+                subjectiveQualityConfidence: nullableConfidence,
+                awakeningsCount: nullableNonNegativeInteger,
+                awakeningsConfidence: nullableConfidence,
+                awakeningsApproximate: { type: 'boolean' },
+                multipleAwakenings: { type: 'boolean' },
+                awakeDuringNightMinutes: nullableNonNegativeInteger,
+                awakeDuringNightConfidence: nullableConfidence,
+                awakeDuringNightApproximate: { type: 'boolean' },
+                restfulnessScore: nullableScore,
+                restfulnessConfidence: nullableConfidence,
+                note: nullableString
+              }
+            }
+          ]
+        }
+      }
+    },
+    nextQuestion: nullableString,
+    completed: { type: 'boolean' },
+    requiresSafetyHandoff: { type: 'boolean' }
   }
 };

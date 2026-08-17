@@ -51,6 +51,14 @@ const replies = {
     'es-ES':
       'Gracias por contármelo. No debo ser tu único apoyo. Como es difícil controlar los impulsos, ¿sientes que podrías actuar de una forma que te ponga a ti o a otra persona en riesgo ahora?'
   },
+  checkInHandoff: {
+    'pt-BR':
+      'Obrigado por me contar. Vamos interromper o check-in por aqui. Se houver risco imediato, procure agora alguém de confiança ou o serviço de emergência da sua região. Você pode continuar no chat para receber uma orientação de segurança mais adequada.',
+    'en-US':
+      'Thank you for telling me. We will pause the check-in here. If there is immediate danger, contact someone you trust or your local emergency service now. You can continue in chat for more appropriate safety guidance.',
+    'es-ES':
+      'Gracias por contármelo. Vamos a interrumpir el check-in aquí. Si existe un riesgo inmediato, contacta ahora a alguien de confianza o al servicio de emergencias de tu zona. Puedes continuar en el chat para recibir una orientación de seguridad más adecuada.'
+  },
   corrective: {
     'pt-BR':
       'Quero corrigir a direção: não posso confirmar rótulos clínicos nem acrescentar sintomas não relatados. Podemos ficar no que você percebe concretamente. O que está mais difícil agora?',
@@ -67,6 +75,10 @@ type Language = keyof (typeof replies)['profile'];
 export class ConversationSafetyPolicy {
   profileSetup(language: Language): ConversationOutput {
     return { reply: replies.profile[language], riskLevel: 'none', scopeStatus: 'in_scope' };
+  }
+
+  dailyCheckInHandoff(language: Language): string {
+    return replies.checkInHandoff[language];
   }
 
   apply(input: {

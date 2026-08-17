@@ -6,6 +6,7 @@ import { PostConversationScheduler } from '../chat/post-conversation.processor';
 import { CurrentContextRepository, MemoryRepository } from '../memory/memory.repository';
 import { MoodRepository } from '../mood/mood.repository';
 import { SleepRepository } from '../sleep/sleep.repository';
+import { DailyCheckInRepository } from '../daily-check-in/daily-check-in.repository';
 
 @Injectable()
 export class AccountLifecycleService implements OnModuleInit, OnModuleDestroy {
@@ -20,6 +21,7 @@ export class AccountLifecycleService implements OnModuleInit, OnModuleDestroy {
     private readonly memories: MemoryRepository,
     private readonly moods: MoodRepository,
     private readonly sleep: SleepRepository,
+    private readonly dailyCheckIns: DailyCheckInRepository,
     private readonly postConversation: PostConversationScheduler
   ) {}
 
@@ -64,7 +66,8 @@ export class AccountLifecycleService implements OnModuleInit, OnModuleDestroy {
       this.currentContexts.deleteByUserId(userId),
       this.memories.deleteByUserId(userId),
       this.moods.deleteByUserId(userId),
-      this.sleep.deleteByUserId(userId)
+      this.sleep.deleteByUserId(userId),
+      this.dailyCheckIns.deleteByUserId(userId)
     ]);
 
     await this.userRepository.delete(userId);

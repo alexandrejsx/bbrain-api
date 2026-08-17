@@ -26,6 +26,8 @@ import { DeactivateUserAccountUseCase } from './deactivate-user-account.use-case
 import { LoginUserUseCase } from './login-user.use-case';
 import { RequestPasswordResetUseCase } from './request-password-reset.use-case';
 import { RegisterUserUseCase } from './register-user.use-case';
+import { DailyCheckInStorageModule } from '../daily-check-in/daily-check-in-storage.module';
+import { DailyCheckInRepository } from '../daily-check-in/daily-check-in.repository';
 
 @Module({
   imports: [
@@ -35,6 +37,7 @@ import { RegisterUserUseCase } from './register-user.use-case';
     MemoryModule,
     MoodModule,
     SleepModule,
+    DailyCheckInStorageModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService): JwtModuleOptions => {
@@ -72,6 +75,7 @@ import { RegisterUserUseCase } from './register-user.use-case';
         memories: MemoryRepository,
         moods: MoodRepository,
         sleep: SleepRepository,
+        dailyCheckIns: DailyCheckInRepository,
         postConversation: PostConversationScheduler
       ) =>
         new AccountLifecycleService(
@@ -83,6 +87,7 @@ import { RegisterUserUseCase } from './register-user.use-case';
           memories,
           moods,
           sleep,
+          dailyCheckIns,
           postConversation
         ),
       inject: [
@@ -94,6 +99,7 @@ import { RegisterUserUseCase } from './register-user.use-case';
         MemoryRepository,
         MoodRepository,
         SleepRepository,
+        DailyCheckInRepository,
         PostConversationScheduler
       ]
     },

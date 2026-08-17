@@ -23,31 +23,40 @@ export interface PostConversationOutput {
     confidence: number;
   };
   pattern: null | { summary: string; topics: string[] };
-  mood: null | {
-    primaryEmotion: string;
-    secondaryEmotions: string[];
-    intensity: number | null;
-    energy: number | null;
-    valence: number | null;
-    occurredAt: string | null;
-    period: string | null;
-    context: string | null;
-    confidence: number;
+}
+
+export interface DailyCheckInMoodOutput {
+  score: number | null;
+  scoreConfidence: number | null;
+  note: string | null;
+}
+
+export interface DailyCheckInSleepOutput {
+  durationMinutes: number | null;
+  durationConfidence: number | null;
+  durationApproximate: boolean;
+  subjectiveQualityScore: number | null;
+  subjectiveQualityConfidence: number | null;
+  awakeningsCount: number | null;
+  awakeningsConfidence: number | null;
+  awakeningsApproximate: boolean;
+  multipleAwakenings: boolean;
+  awakeDuringNightMinutes: number | null;
+  awakeDuringNightConfidence: number | null;
+  awakeDuringNightApproximate: boolean;
+  restfulnessScore: number | null;
+  restfulnessConfidence: number | null;
+  note: string | null;
+}
+
+export interface DailyCheckInOutput {
+  extracted: {
+    mood: DailyCheckInMoodOutput | null;
+    sleep: DailyCheckInSleepOutput | null;
   };
-  sleep: null | {
-    durationMinutes: number | null;
-    durationMinMinutes: number | null;
-    durationMaxMinutes: number | null;
-    bedtime: string | null;
-    wakeTime: string | null;
-    quality: string | null;
-    awakenings: number | null;
-    wakeFeeling: string | null;
-    date: string | null;
-    period: string | null;
-    precision: 'exact' | 'approximate';
-    confidence: number;
-  };
+  nextQuestion: string | null;
+  completed: boolean;
+  requiresSafetyHandoff: boolean;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -87,7 +96,7 @@ export function parseConversationOutput(text: string): ConversationOutput {
 
 export function parsePostConversationOutput(text: string): PostConversationOutput {
   const value = parseObject(text);
-  exactKeys(value, ['currentContext', 'memory', 'pattern', 'mood', 'sleep']);
+  exactKeys(value, ['currentContext', 'memory', 'pattern']);
   optionalObject(value.currentContext, (item) => {
     exactKeys(item, ['summary', 'topics', 'pendingItems', 'confidence']);
     stringValue(item.summary, 320);
@@ -109,57 +118,63 @@ export function parsePostConversationOutput(text: string): PostConversationOutpu
     stringValue(item.summary, 280);
     stringArray(item.topics, 8, 60, true);
   });
-  optionalObject(value.mood, (item) => {
-    exactKeys(item, [
-      'primaryEmotion',
-      'secondaryEmotions',
-      'intensity',
-      'energy',
-      'valence',
-      'occurredAt',
-      'period',
-      'context',
-      'confidence'
-    ]);
-    stringValue(item.primaryEmotion, 60);
-    stringArray(item.secondaryEmotions, 4, 60, true);
-    nullableNumber(item.intensity, 0, 10);
-    nullableNumber(item.energy, 0, 10);
-    nullableNumber(item.valence, -1, 1);
-    nullableString(item.occurredAt, 40);
-    nullableString(item.period, 120);
-    nullableString(item.context, 180);
-    boundedNumber(item.confidence, 0, 1);
+  return value as unknown as PostConversationOutput;
+}
+
+export function parseDailyCheckInOutput(text: string): DailyCheckInOutput {
+  const value = parseObject(text);
+  exactKeys(value, ['extracted', 'nextQuestion', 'completed', 'requiresSafetyHandoff']);
+  if (!isRecord(value.extracted)) invalidDailyCheckIn();
+  exactKeys(value.extracted, ['mood', 'sleep']);
+  optionalObject(value.extracted.mood, (item) => {
+    exactKeys(item, ['score', 'scoreConfidence', 'note']);
+    nullableInteger(item.score, 0, 10, invalidDailyCheckIn);
+    nullableNumberWith(item.scoreConfidence, 0, 1, invalidDailyCheckIn);
+    nullableStringWith(item.note, 240, invalidDailyCheckIn);
   });
-  optionalObject(value.sleep, (item) => {
+  optionalObject(value.extracted.sleep, (item) => {
     exactKeys(item, [
       'durationMinutes',
-      'durationMinMinutes',
-      'durationMaxMinutes',
-      'bedtime',
-      'wakeTime',
-      'quality',
-      'awakenings',
-      'wakeFeeling',
-      'date',
-      'period',
-      'precision',
-      'confidence'
+      'durationConfidence',
+      'durationApproximate',
+      'subjectiveQualityScore',
+      'subjectiveQualityConfidence',
+      'awakeningsCount',
+      'awakeningsConfidence',
+      'awakeningsApproximate',
+      'multipleAwakenings',
+      'awakeDuringNightMinutes',
+      'awakeDuringNightConfidence',
+      'awakeDuringNightApproximate',
+      'restfulnessScore',
+      'restfulnessConfidence',
+      'note'
     ]);
-    nullableNumber(item.durationMinutes, 1, 1440);
-    nullableNumber(item.durationMinMinutes, 1, 1440);
-    nullableNumber(item.durationMaxMinutes, 1, 1440);
-    nullableString(item.bedtime, 5);
-    nullableString(item.wakeTime, 5);
-    nullableString(item.quality, 60);
-    nullableNumber(item.awakenings, 0, 100);
-    nullableString(item.wakeFeeling, 60);
-    nullableString(item.date, 10);
-    nullableString(item.period, 120);
-    enumValue(item.precision, ['exact', 'approximate']);
-    boundedNumber(item.confidence, 0, 1);
+    nullableInteger(item.durationMinutes, 0, 1440, invalidDailyCheckIn);
+    nullableNumberWith(item.durationConfidence, 0, 1, invalidDailyCheckIn);
+    booleanValue(item.durationApproximate, invalidDailyCheckIn);
+    nullableInteger(item.subjectiveQualityScore, 0, 10, invalidDailyCheckIn);
+    nullableNumberWith(item.subjectiveQualityConfidence, 0, 1, invalidDailyCheckIn);
+    nullableInteger(item.awakeningsCount, 0, 100, invalidDailyCheckIn);
+    nullableNumberWith(item.awakeningsConfidence, 0, 1, invalidDailyCheckIn);
+    booleanValue(item.awakeningsApproximate, invalidDailyCheckIn);
+    booleanValue(item.multipleAwakenings, invalidDailyCheckIn);
+    nullableInteger(item.awakeDuringNightMinutes, 0, 1440, invalidDailyCheckIn);
+    nullableNumberWith(item.awakeDuringNightConfidence, 0, 1, invalidDailyCheckIn);
+    booleanValue(item.awakeDuringNightApproximate, invalidDailyCheckIn);
+    nullableInteger(item.restfulnessScore, 0, 10, invalidDailyCheckIn);
+    nullableNumberWith(item.restfulnessConfidence, 0, 1, invalidDailyCheckIn);
+    nullableStringWith(item.note, 240, invalidDailyCheckIn);
   });
-  return value as unknown as PostConversationOutput;
+  nullableStringWith(value.nextQuestion, 320, invalidDailyCheckIn);
+  booleanValue(value.completed, invalidDailyCheckIn);
+  booleanValue(value.requiresSafetyHandoff, invalidDailyCheckIn);
+  if (value.completed === true && value.nextQuestion !== null) invalidDailyCheckIn();
+  return value as unknown as DailyCheckInOutput;
+}
+
+function invalidDailyCheckIn(): never {
+  throw new Error('Invalid daily check-in structured output');
 }
 
 function invalid(): never {
@@ -206,9 +221,23 @@ function boundedNumber(value: unknown, min: number, max: number): void {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) invalid();
 }
 
-function nullableNumber(value: unknown, min: number, max: number): void {
+function nullableNumberWith(value: unknown, min: number, max: number, fail: () => never): void {
   if (value === null) return;
-  boundedNumber(value, min, max);
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) fail();
+}
+
+function nullableInteger(value: unknown, min: number, max: number, fail: () => never): void {
+  nullableNumberWith(value, min, max, fail);
+  if (value !== null && !Number.isInteger(value)) fail();
+}
+
+function nullableStringWith(value: unknown, maxLength: number, fail: () => never): void {
+  if (value === null) return;
+  if (typeof value !== 'string' || !value.trim() || value.length > maxLength) fail();
+}
+
+function booleanValue(value: unknown, fail: () => never): void {
+  if (typeof value !== 'boolean') fail();
 }
 
 function enumValue(value: unknown, allowed: readonly string[]): void {

@@ -13,6 +13,7 @@ import { ContextBuilder } from './context-builder';
 import { SendChatMessageService } from './send-chat-message.service';
 import { ChatStorageModule } from './chat-storage.module';
 import { PostProcessingModule } from './post-processing.module';
+import { DailyCheckInStorageModule } from '../daily-check-in/daily-check-in-storage.module';
 
 @Module({
   imports: [
@@ -24,7 +25,8 @@ import { PostProcessingModule } from './post-processing.module';
     MoodModule,
     SleepModule,
     ChatStorageModule,
-    PostProcessingModule
+    PostProcessingModule,
+    DailyCheckInStorageModule
   ],
   controllers: [ChatController],
   providers: [ConversationAgent, ConversationSafetyPolicy, ContextBuilder, SendChatMessageService],

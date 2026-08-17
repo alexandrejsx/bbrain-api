@@ -7,7 +7,9 @@ API NestJS do BBrain para autenticação, perfil, conversa, memória, histórico
 ```text
 mensagem → ContextBuilder → ConversationAgent → safety → resposta
                                               ↘ processamento pós-conversa
-                                                Current Context / Memory / Pattern / Mood / Sleep
+                                                Current Context / Memory / Pattern
+
+Daily Check-in → DailyCheckInAgent (FAST) → validação → Mood / Sleep
 ```
 
 Quando autorizado, a continuidade imediata usa seis mensagens recentes por padrão (máximo configurável de oito) com TTL. Isso não é histórico permanente: informação antiga útil é consolidada e o conteúdo literal expira. O processamento posterior é local, assíncrono, idempotente e nunca bloqueia a resposta.
@@ -31,6 +33,8 @@ GEMINI_MODEL_REASONING=gemini-3.1-pro-preview
 ```
 
 Use `.env.example` para a configuração completa. O provider ativo precisa de sua respectiva API key. Nomes de modelos não aparecem nos agentes, extractors ou regras de negócio.
+
+O Daily Check-in possui endpoints próprios em `/daily-check-in`, draft estruturado por usuário/data, adiamento diário persistido e trial de sete dias validado no backend. Ele não passa pelo fluxo de mensagens nem incrementa a quota do chat. Registros manuais em `/wellbeing-history/observations` continuam independentes de plano.
 
 ## Desenvolvimento
 

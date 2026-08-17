@@ -49,6 +49,16 @@ export class SleepRepository {
     return document ? toRecord(document) : null;
   }
 
+  async findBySourceEventId(
+    userId: string,
+    sourceEventId: string
+  ): Promise<WellbeingRecord | null> {
+    const document = await this.model
+      .findOne({ user_id: userId, source_event_id: sourceEventId })
+      .exec();
+    return document ? toRecord(document) : null;
+  }
+
   async create(
     input: Omit<WellbeingRecord, 'id' | 'createdAt' | 'updatedAt'>
   ): Promise<WellbeingRecord | null> {

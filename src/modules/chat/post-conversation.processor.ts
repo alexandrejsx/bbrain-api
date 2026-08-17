@@ -9,8 +9,6 @@ import { UserRepository } from '../../domain/users/repositories/user.repository'
 import { USERS_REPOSITORY } from '../../modules/tokens';
 import { CurrentContextRepository } from '../memory/memory.repository';
 import { MemoryService } from '../memory/memory.service';
-import { MoodService } from '../mood/mood.service';
-import { SleepService } from '../sleep/sleep.service';
 import { DataConsentPolicy } from '../users/data-consent.policy';
 
 export interface PostConversationInput {
@@ -31,8 +29,6 @@ export class PostConversationProcessor {
     private readonly consentPolicy: DataConsentPolicy,
     private readonly currentContexts: CurrentContextRepository,
     private readonly memory: MemoryService,
-    private readonly mood: MoodService,
-    private readonly sleep: SleepService,
     private readonly config: ConfigService
   ) {}
 
@@ -40,7 +36,7 @@ export class PostConversationProcessor {
     const initialUser = await this.users.findById(input.userId);
     if (!initialUser || initialUser.hasScheduledDeletion()) return;
     const initialConsent = this.consentPolicy.resolve(initialUser);
-    if (!initialConsent.canUseConversationData && !initialConsent.canExtractWellbeing) return;
+    if (!initialConsent.canUseConversationData) return;
 
     const output = await this.extractor.extract({
       userMessage: input.userMessage,
@@ -93,48 +89,6 @@ export class PostConversationProcessor {
           extractorVersion: POST_CONVERSATION_EXTRACTOR_VERSION,
           promptVersion: promptVersions.memory,
           patternPromptVersion: promptVersions.pattern
-        })
-      );
-    }
-
-    if (
-      consent.canExtractWellbeing &&
-      output.mood &&
-      validConfidence(output.mood.confidence, minimumConfidence) &&
-      validText(output.mood.primaryEmotion, 60)
-    ) {
-      writes.push(
-        this.mood.createFromChat({
-          userId: input.userId,
-          sessionId: input.sessionId,
-          sourceEventId: input.sourceEventId,
-          capturedAt: input.capturedAt,
-          timezone: consent.timezone,
-          confidence: output.mood.confidence,
-          data: output.mood,
-          extractorVersion: POST_CONVERSATION_EXTRACTOR_VERSION,
-          promptVersion: promptVersions.mood
-        })
-      );
-    }
-
-    if (
-      consent.canExtractWellbeing &&
-      output.sleep &&
-      validConfidence(output.sleep.confidence, minimumConfidence) &&
-      hasSleepData(output.sleep)
-    ) {
-      writes.push(
-        this.sleep.createFromChat({
-          userId: input.userId,
-          sessionId: input.sessionId,
-          sourceEventId: input.sourceEventId,
-          capturedAt: input.capturedAt,
-          timezone: consent.timezone,
-          confidence: output.sleep.confidence,
-          data: output.sleep,
-          extractorVersion: POST_CONVERSATION_EXTRACTOR_VERSION,
-          promptVersion: promptVersions.sleep
         })
       );
     }
@@ -192,26 +146,4 @@ function stringList(value: unknown, limit = 8): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => validText(item, 120)).slice(0, limit)
     : [];
-}
-
-function hasSleepData(value: {
-  durationMinutes: number | null;
-  durationMinMinutes: number | null;
-  durationMaxMinutes: number | null;
-  bedtime: string | null;
-  wakeTime: string | null;
-  quality: string | null;
-  awakenings: number | null;
-  wakeFeeling: string | null;
-}): boolean {
-  return [
-    value.durationMinutes,
-    value.durationMinMinutes,
-    value.durationMaxMinutes,
-    value.bedtime,
-    value.wakeTime,
-    value.quality,
-    value.awakenings,
-    value.wakeFeeling
-  ].some((item) => item !== null);
 }

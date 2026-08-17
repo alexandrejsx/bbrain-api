@@ -1,7 +1,10 @@
 export type AiProviderName = 'openai' | 'gemini';
 export type ModelRole = 'FAST' | 'CONVERSATION' | 'REASONING';
 
-export type AiOperation = 'conversation.reply' | 'conversation.post_processing';
+export type AiOperation =
+  | 'conversation.reply'
+  | 'conversation.post_processing'
+  | 'daily_check_in.answer';
 
 export interface AiMessage {
   role: 'user' | 'assistant';

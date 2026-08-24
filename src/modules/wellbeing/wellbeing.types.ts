@@ -35,6 +35,7 @@ export type WellbeingProvenance =
 export interface WellbeingRecord {
   id: string;
   userId: string;
+  recordDate: string;
   kind: WellbeingKind;
   data: Record<string, unknown>;
   temporalReference: TemporalReference;
@@ -54,6 +55,7 @@ export interface WellbeingRecord {
 export function toPublicWellbeingRecord(record: WellbeingRecord) {
   return {
     id: record.id,
+    recordDate: record.recordDate,
     kind: record.kind,
     data: record.data,
     temporalReference: record.temporalReference,
@@ -68,4 +70,9 @@ export function toPublicWellbeingRecord(record: WellbeingRecord) {
 export class WellbeingNotFoundError extends Error {}
 export class WellbeingRevisionConflictError extends Error {}
 export class WellbeingIdempotencyConflictError extends Error {}
+export class WellbeingDailyRecordConflictError extends Error {
+  constructor(readonly recordDate: string) {
+    super(`A daily wellbeing record already exists for ${recordDate}`);
+  }
+}
 export class InvalidWellbeingRecordError extends Error {}

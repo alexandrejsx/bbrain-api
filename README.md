@@ -9,8 +9,19 @@ mensagem → ContextBuilder → ConversationAgent → safety → resposta
                                               ↘ processamento pós-conversa
                                                 Current Context / Memory / Pattern
 
-Daily Check-in → DailyCheckInAgent (FAST) → validação → Mood / Sleep
+Daily Check-in → DailyCheckInAgent (FAST, somente Humor) → formulário estruturado de Sono → validação → Mood / Sleep
 ```
+
+## Seeds de desenvolvimento
+
+As seeds usam os últimos 30 dias do usuário indicado por `SEED_USER_ID` ou `SEED_USER_EMAIL`:
+
+```bash
+pnpm seeds:local mood
+pnpm seeds:local sleep
+```
+
+Em produção, use `pnpm seeds:prod mood|sleep` com a configuração de ambiente já carregada e a confirmação explícita `SEED_PRODUCTION_CONFIRM=seed-bbrain-production`. A CLI rejeita URI remota no comando local, URI local no comando de produção e nomes de seed desconhecidos.
 
 Quando autorizado, a continuidade imediata usa seis mensagens recentes por padrão (máximo configurável de oito) com TTL. Isso não é histórico permanente: informação antiga útil é consolidada e o conteúdo literal expira. O processamento posterior é local, assíncrono, idempotente e nunca bloqueia a resposta.
 
@@ -34,7 +45,7 @@ GEMINI_MODEL_REASONING=gemini-3.1-pro-preview
 
 Use `.env.example` para a configuração completa. O provider ativo precisa de sua respectiva API key. Nomes de modelos não aparecem nos agentes, extractors ou regras de negócio.
 
-O Daily Check-in possui endpoints próprios em `/daily-check-in`, draft estruturado por usuário/data, adiamento diário persistido e trial de sete dias validado no backend. Ele não passa pelo fluxo de mensagens nem incrementa a quota do chat. Registros manuais em `/wellbeing-history/observations` continuam independentes de plano.
+O Daily Check-in possui endpoints próprios em `/daily-check-in`, draft estruturado por usuário/data, Humor em texto livre e Sono enviado por `POST /daily-check-in/sleep`. O adiamento diário é persistido e o trial de sete dias é validado no backend. Ele não passa pelo fluxo de mensagens nem incrementa a quota do chat. Registros manuais em `/wellbeing-history/observations` continuam independentes de plano.
 
 ## Desenvolvimento
 

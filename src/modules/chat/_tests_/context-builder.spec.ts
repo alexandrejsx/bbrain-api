@@ -81,7 +81,9 @@ describe('ContextBuilder', () => {
         findById: jest.fn().mockResolvedValue({
           data: {
             durationMinutes: { value: 360, precision: 'approximate' },
-            restfulnessScore: 7
+            wakeRestfulness: 'fairly_rested',
+            awakeTimeDuringNight: '15_to_29',
+            sleepQuality: { score: 7, rawScore: 7.2, classification: 'good', components: {} }
           }
         })
       } as never,
@@ -112,7 +114,9 @@ describe('ContextBuilder', () => {
       mood: { score: 4, note: 'Um pouco apreensivo.' },
       sleep: {
         durationMinutes: { value: 360, precision: 'approximate' },
-        restfulnessScore: 7
+        wakeRestfulness: 'fairly_rested',
+        awakeTimeDuringNight: '15_to_29',
+        sleepQuality: { score: 7, classification: 'good' }
       }
     });
     expect(result.context.recentMessages).toEqual([

@@ -31,28 +31,9 @@ export interface DailyCheckInMoodOutput {
   note: string | null;
 }
 
-export interface DailyCheckInSleepOutput {
-  durationMinutes: number | null;
-  durationConfidence: number | null;
-  durationApproximate: boolean;
-  subjectiveQualityScore: number | null;
-  subjectiveQualityConfidence: number | null;
-  awakeningsCount: number | null;
-  awakeningsConfidence: number | null;
-  awakeningsApproximate: boolean;
-  multipleAwakenings: boolean;
-  awakeDuringNightMinutes: number | null;
-  awakeDuringNightConfidence: number | null;
-  awakeDuringNightApproximate: boolean;
-  restfulnessScore: number | null;
-  restfulnessConfidence: number | null;
-  note: string | null;
-}
-
 export interface DailyCheckInOutput {
   extracted: {
     mood: DailyCheckInMoodOutput | null;
-    sleep: DailyCheckInSleepOutput | null;
   };
   nextQuestion: string | null;
   completed: boolean;
@@ -123,47 +104,17 @@ export function parsePostConversationOutput(text: string): PostConversationOutpu
 
 export function parseDailyCheckInOutput(text: string): DailyCheckInOutput {
   const value = parseObject(text);
-  exactKeys(value, ['extracted', 'nextQuestion', 'completed', 'requiresSafetyHandoff']);
+  exactKeys(
+    value,
+    ['extracted', 'nextQuestion', 'completed', 'requiresSafetyHandoff'],
+    invalidDailyCheckIn
+  );
   if (!isRecord(value.extracted)) invalidDailyCheckIn();
-  exactKeys(value.extracted, ['mood', 'sleep']);
+  exactKeys(value.extracted, ['mood'], invalidDailyCheckIn);
   optionalObject(value.extracted.mood, (item) => {
-    exactKeys(item, ['score', 'scoreConfidence', 'note']);
+    exactKeys(item, ['score', 'scoreConfidence', 'note'], invalidDailyCheckIn);
     nullableInteger(item.score, 0, 10, invalidDailyCheckIn);
     nullableNumberWith(item.scoreConfidence, 0, 1, invalidDailyCheckIn);
-    nullableStringWith(item.note, 240, invalidDailyCheckIn);
-  });
-  optionalObject(value.extracted.sleep, (item) => {
-    exactKeys(item, [
-      'durationMinutes',
-      'durationConfidence',
-      'durationApproximate',
-      'subjectiveQualityScore',
-      'subjectiveQualityConfidence',
-      'awakeningsCount',
-      'awakeningsConfidence',
-      'awakeningsApproximate',
-      'multipleAwakenings',
-      'awakeDuringNightMinutes',
-      'awakeDuringNightConfidence',
-      'awakeDuringNightApproximate',
-      'restfulnessScore',
-      'restfulnessConfidence',
-      'note'
-    ]);
-    nullableInteger(item.durationMinutes, 0, 1440, invalidDailyCheckIn);
-    nullableNumberWith(item.durationConfidence, 0, 1, invalidDailyCheckIn);
-    booleanValue(item.durationApproximate, invalidDailyCheckIn);
-    nullableInteger(item.subjectiveQualityScore, 0, 10, invalidDailyCheckIn);
-    nullableNumberWith(item.subjectiveQualityConfidence, 0, 1, invalidDailyCheckIn);
-    nullableInteger(item.awakeningsCount, 0, 100, invalidDailyCheckIn);
-    nullableNumberWith(item.awakeningsConfidence, 0, 1, invalidDailyCheckIn);
-    booleanValue(item.awakeningsApproximate, invalidDailyCheckIn);
-    booleanValue(item.multipleAwakenings, invalidDailyCheckIn);
-    nullableInteger(item.awakeDuringNightMinutes, 0, 1440, invalidDailyCheckIn);
-    nullableNumberWith(item.awakeDuringNightConfidence, 0, 1, invalidDailyCheckIn);
-    booleanValue(item.awakeDuringNightApproximate, invalidDailyCheckIn);
-    nullableInteger(item.restfulnessScore, 0, 10, invalidDailyCheckIn);
-    nullableNumberWith(item.restfulnessConfidence, 0, 1, invalidDailyCheckIn);
     nullableStringWith(item.note, 240, invalidDailyCheckIn);
   });
   nullableStringWith(value.nextQuestion, 320, invalidDailyCheckIn);
@@ -181,9 +132,13 @@ function invalid(): never {
   throw new Error('Invalid post-conversation structured output');
 }
 
-function exactKeys(value: Record<string, unknown>, expected: string[]): void {
+function exactKeys(
+  value: Record<string, unknown>,
+  expected: string[],
+  fail: () => never = invalid
+): void {
   const actual = Object.keys(value);
-  if (actual.length !== expected.length || expected.some((key) => !(key in value))) invalid();
+  if (actual.length !== expected.length || expected.some((key) => !(key in value))) fail();
 }
 
 function optionalObject(value: unknown, validate: (item: Record<string, unknown>) => void): void {

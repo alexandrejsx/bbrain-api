@@ -8,6 +8,7 @@ import { HydratedDocument } from 'mongoose';
 export class MoodMongo {
   @Prop({ type: String, required: true }) _id: string;
   @Prop({ type: String, required: true, index: true }) user_id: string;
+  @Prop({ type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ }) record_date: string;
   @Prop({ type: String, required: true, enum: ['mood_event', 'mood_daily_summary'], index: true })
   kind: 'mood_event' | 'mood_daily_summary';
   @Prop({ type: Object, required: true }) data: Record<string, unknown>;
@@ -38,4 +39,8 @@ MoodSchema.index(
   { user_id: 1, source_event_id: 1 },
   { unique: true, partialFilterExpression: { source_event_id: { $type: 'string' } } }
 );
-MoodSchema.index({ user_id: 1, 'temporal_reference.localDate': -1 });
+MoodSchema.index(
+  { user_id: 1, record_date: 1 },
+  { unique: true, name: 'unique_mood_record_per_user_day' }
+);
+MoodSchema.index({ user_id: 1, record_date: -1 });

@@ -10,6 +10,7 @@ import { USERS_REPOSITORY } from '../tokens';
 import { MoodService } from '../mood/mood.service';
 import { SleepService } from '../sleep/sleep.service';
 import { DataConsentPolicy } from '../users/data-consent.policy';
+import { InvalidWellbeingRecordError } from '../wellbeing/wellbeing.types';
 import { DailyCheckInAccessPolicy } from './daily-check-in-access.policy';
 import { DailyCheckInRepository } from './daily-check-in.repository';
 import {
@@ -24,7 +25,7 @@ import {
   EMPTY_CHECK_IN_STATE
 } from './daily-check-in.types';
 
-const MAX_QUESTIONS = 5;
+const MAX_QUESTIONS = 2;
 
 const firstQuestions: Record<DailyCheckInLocale, string> = {
   'pt-BR': 'Como você está se sentindo hoje? Pode me contar do seu jeito.',
@@ -32,28 +33,10 @@ const firstQuestions: Record<DailyCheckInLocale, string> = {
   'es-ES': '¿Cómo te sientes hoy? Puedes contármelo con tus propias palabras.'
 };
 
-const fallbackQuestions: Record<DailyCheckInLocale, Record<string, string>> = {
-  'pt-BR': {
-    mood: 'Se fosse descrever seu estado de hoje em poucas palavras, como ele está?',
-    durationMinutes: 'E como foi sua noite? Quanto tempo você acha que dormiu?',
-    subjectiveQualityScore: 'Como você percebeu a qualidade do seu sono?',
-    restfulnessScore: 'Como você se sentiu ao acordar?',
-    awakeningsCount: 'Você se lembra se acordou durante a noite?'
-  },
-  'en-US': {
-    mood: 'If you described how you feel today in a few words, what would you say?',
-    durationMinutes: 'And how was your night? About how long did you sleep?',
-    subjectiveQualityScore: 'How did the quality of your sleep feel to you?',
-    restfulnessScore: 'How did you feel when you woke up?',
-    awakeningsCount: 'Do you remember waking up during the night?'
-  },
-  'es-ES': {
-    mood: 'Si describieras cómo te sientes hoy en pocas palabras, ¿qué dirías?',
-    durationMinutes: '¿Y cómo fue tu noche? ¿Cuánto tiempo crees que dormiste?',
-    subjectiveQualityScore: '¿Cómo percibiste la calidad de tu sueño?',
-    restfulnessScore: '¿Cómo te sentiste al despertar?',
-    awakeningsCount: '¿Recuerdas si te despertaste durante la noche?'
-  }
+const followUpQuestions: Record<DailyCheckInLocale, string> = {
+  'pt-BR': 'Se fosse descrever seu estado de hoje em poucas palavras, como ele está?',
+  'en-US': 'If you described how you feel today in a few words, what would you say?',
+  'es-ES': 'Si describieras cómo te sientes hoy en pocas palabras, ¿qué dirías?'
 };
 
 @Injectable()
@@ -129,6 +112,7 @@ export class DailyCheckInService {
       return this.toResponse(context.access, current);
     }
     if (current.status === 'completed') return this.toResponse(context.access, current);
+    if (!current.nextQuestion) return this.toResponse(context.access, current);
     if (current.processing?.id === input.clientRequestId) {
       if (current.processing.fingerprint !== fingerprint)
         throw new DailyCheckInRequestConflictError();
@@ -146,30 +130,25 @@ export class DailyCheckInService {
       const generated = await this.agent.respond({
         locale: input.locale,
         currentState: claimed.state,
-        missingFields: missingFields(claimed.state),
+        missingFields: claimed.state.mood.score === null ? ['mood'] : [],
         currentQuestion: claimed.nextQuestion,
         questionCount: claimed.questionCount,
-        maxQuestions: claimed.maxQuestions,
+        maxQuestions: MAX_QUESTIONS,
         userMessage: input.message,
         correlationId: input.clientRequestId
       });
       const minimumConfidence = this.config.get<number>('ai.extractionMinimumConfidence') ?? 0.85;
       const state = mergeAcceptedState(claimed.state, generated, minimumConfidence);
-      const useful = hasUsefulState(state);
-      const limitReached = claimed.questionCount >= claimed.maxQuestions;
+      const limitReached = claimed.questionCount >= MAX_QUESTIONS;
       const safetyHandoff = generated.requiresSafetyHandoff;
-      const completed = safetyHandoff || limitReached || (generated.completed && useful);
-      const nextQuestion = completed
-        ? null
-        : (cleanQuestion(generated.nextQuestion) ?? nextFallbackQuestion(input.locale, state));
+      const moodStageFinished = safetyHandoff || limitReached || state.mood.score !== null;
+      const completed = safetyHandoff;
+      const nextQuestion = moodStageFinished ? null : followUpQuestions[input.locale];
 
       let moodRecordId: string | undefined;
-      let sleepRecordId: string | undefined;
       const completedAt = completed ? new Date() : undefined;
       if (completed) {
-        const records = await this.persistAcceptedState(claimed, state, completedAt!);
-        moodRecordId = records.moodRecordId;
-        sleepRecordId = records.sleepRecordId;
+        moodRecordId = await this.persistMood(claimed, state, completedAt!);
       }
 
       const saved = await this.repository.finishTurn({
@@ -177,11 +156,10 @@ export class DailyCheckInService {
         requestId: input.clientRequestId,
         fingerprint,
         state,
-        questionCount: completed ? claimed.questionCount : claimed.questionCount + 1,
+        questionCount: moodStageFinished ? claimed.questionCount : claimed.questionCount + 1,
         nextQuestion,
         completed,
         moodRecordId,
-        sleepRecordId,
         completedAt
       });
       if (!saved) throw new DailyCheckInRequestInProgressError();
@@ -199,6 +177,88 @@ export class DailyCheckInService {
         throw error;
       }
       throw new DailyCheckInProviderUnavailableError();
+    }
+  }
+
+  async submitSleep(input: {
+    userId: string;
+    locale: DailyCheckInLocale;
+    clientRequestId: string;
+    recordDate: string;
+    durationMinutes: number;
+    wakeRestfulness: 'very_tired' | 'tired' | 'fairly_rested' | 'rested';
+    awakeTimeDuringNight: 'under_15' | '15_to_29' | '30_to_59' | '60_or_more';
+    sleepLatency?: 'up_to_15' | '16_to_30' | '31_to_60' | 'over_60' | 'unknown';
+    sleepOnsetTime?: string;
+    wakeTime?: string;
+    note?: string;
+  }) {
+    const context = await this.resolveContext(input.userId);
+    this.assertAvailable(context.access, context.canStoreWellbeing);
+    if (input.recordDate > context.localDate) throw new InvalidWellbeingRecordError();
+    const current = await this.repository.findByUserAndDate(input.userId, context.localDate);
+    if (!current) throw new DailyCheckInNotStartedError();
+    const payload = JSON.stringify({
+      recordDate: input.recordDate,
+      durationMinutes: input.durationMinutes,
+      wakeRestfulness: input.wakeRestfulness,
+      awakeTimeDuringNight: input.awakeTimeDuringNight,
+      sleepLatency: input.sleepLatency,
+      sleepOnsetTime: input.sleepOnsetTime,
+      wakeTime: input.wakeTime,
+      note: input.note
+    });
+    const fingerprint = this.fingerprint(input.userId, payload);
+    const processed = current.processedRequests.find((item) => item.id === input.clientRequestId);
+    if (processed) {
+      if (processed.fingerprint !== fingerprint) throw new DailyCheckInRequestConflictError();
+      return this.toResponse(context.access, current);
+    }
+    if (current.status === 'completed') return this.toResponse(context.access, current);
+    if (current.nextQuestion) throw new DailyCheckInNotStartedError();
+
+    const claimed = await this.repository.claimAnswer(
+      current.id,
+      input.clientRequestId,
+      fingerprint
+    );
+    if (!claimed) throw new DailyCheckInRequestInProgressError();
+    try {
+      const capturedAt = new Date();
+      const state: DailyCheckInState = {
+        ...structuredClone(claimed.state),
+        sleep: {
+          durationMinutes: input.durationMinutes,
+          wakeRestfulness: input.wakeRestfulness,
+          awakeTimeDuringNight: input.awakeTimeDuringNight,
+          sleepLatency: input.sleepLatency ?? null,
+          sleepOnsetTime: input.sleepOnsetTime ?? null,
+          wakeTime: input.wakeTime ?? null,
+          note: cleanNote(input.note ?? null),
+          recordDate: input.recordDate
+        }
+      };
+      const [moodRecordId, sleepRecordId] = await Promise.all([
+        this.persistMood(claimed, state, capturedAt),
+        this.persistSleep(claimed, state, capturedAt)
+      ]);
+      const saved = await this.repository.finishTurn({
+        sessionId: claimed.id,
+        requestId: input.clientRequestId,
+        fingerprint,
+        state,
+        questionCount: claimed.questionCount,
+        nextQuestion: null,
+        completed: true,
+        moodRecordId,
+        sleepRecordId,
+        completedAt: capturedAt
+      });
+      if (!saved) throw new DailyCheckInRequestInProgressError();
+      return this.toResponse(context.access, saved);
+    } catch (error) {
+      await this.repository.releaseAnswer(claimed.id, input.clientRequestId);
+      throw error;
     }
   }
 
@@ -222,41 +282,52 @@ export class DailyCheckInService {
     if (!access.available || !canStoreWellbeing) throw new DailyCheckInLockedError();
   }
 
-  private async persistAcceptedState(
+  private async persistMood(
     session: DailyCheckInSession,
     state: DailyCheckInState,
     capturedAt: Date
   ) {
-    const sourceEventId = `daily-check-in:${session.id}`;
-    const [mood, sleep] = await Promise.all([
-      state.mood.score === null || state.mood.scoreConfidence === null
-        ? null
-        : this.mood.createFromGuidedCheckIn({
-            userId: session.userId,
-            checkInId: session.id,
-            sourceEventId,
-            capturedAt,
-            timezone: session.timezone,
-            localDate: session.localDate,
-            score: state.mood.score,
-            scoreConfidence: state.mood.scoreConfidence,
-            note: state.mood.note,
-            promptVersion: promptVersions.dailyCheckIn
-          }),
-      hasSleepState(state.sleep)
-        ? this.sleep.createFromGuidedCheckIn({
-            userId: session.userId,
-            checkInId: session.id,
-            sourceEventId,
-            capturedAt,
-            timezone: session.timezone,
-            localDate: session.localDate,
-            data: state.sleep,
-            promptVersion: promptVersions.dailyCheckIn
-          })
-        : null
-    ]);
-    return { moodRecordId: mood?.id, sleepRecordId: sleep?.id };
+    if (state.mood.score === null || state.mood.scoreConfidence === null) return undefined;
+    const mood = await this.mood.createFromGuidedCheckIn({
+      userId: session.userId,
+      checkInId: session.id,
+      sourceEventId: `daily-check-in:${session.id}:mood`,
+      capturedAt,
+      timezone: session.timezone,
+      localDate: session.localDate,
+      score: state.mood.score,
+      scoreConfidence: state.mood.scoreConfidence,
+      note: state.mood.note,
+      promptVersion: promptVersions.dailyCheckIn
+    });
+    return mood.id;
+  }
+
+  private async persistSleep(
+    session: DailyCheckInSession,
+    state: DailyCheckInState,
+    capturedAt: Date
+  ) {
+    if (!hasStructuredSleep(state.sleep)) throw new DailyCheckInNotStartedError();
+    const sleep = await this.sleep.createFromGuidedCheckIn({
+      userId: session.userId,
+      checkInId: session.id,
+      sourceEventId: `daily-check-in:${session.id}:sleep`,
+      capturedAt,
+      timezone: session.timezone,
+      localDate: state.sleep.recordDate,
+      data: {
+        durationMinutes: state.sleep.durationMinutes,
+        wakeRestfulness: state.sleep.wakeRestfulness,
+        awakeTimeDuringNight: state.sleep.awakeTimeDuringNight,
+        ...(state.sleep.sleepLatency ? { sleepLatency: state.sleep.sleepLatency } : {}),
+        ...(state.sleep.sleepOnsetTime ? { sleepOnsetTime: state.sleep.sleepOnsetTime } : {}),
+        ...(state.sleep.wakeTime ? { wakeTime: state.sleep.wakeTime } : {}),
+        ...(state.sleep.note ? { note: state.sleep.note } : {})
+      },
+      promptVersion: promptVersions.dailyCheckIn
+    });
+    return sleep.id;
   }
 
   private toResponse(
@@ -269,10 +340,17 @@ export class DailyCheckInService {
       accessReason: access.accessReason,
       inProgress: session?.status === 'in_progress',
       dismissedToday: Boolean(session?.dismissedAt),
+      localDate: session?.localDate ?? null,
+      currentStep:
+        session?.status === 'completed'
+          ? 'completed'
+          : session?.status === 'in_progress' && !session.nextQuestion
+            ? 'sleep'
+            : 'mood',
       nextQuestion: session?.status === 'in_progress' ? session.nextQuestion : null,
       completed: session?.status === 'completed',
-      questionCount: session?.questionCount ?? 0,
-      maxQuestions: session?.maxQuestions ?? MAX_QUESTIONS,
+      questionCount: session ? Math.min(session.questionCount, MAX_QUESTIONS) : 0,
+      maxQuestions: MAX_QUESTIONS,
       summary: session?.status === 'completed' ? publicState(session.state) : null,
       requiresSafetyHandoff: false,
       safetyMessage: null
@@ -297,62 +375,7 @@ function mergeAcceptedState(
     next.mood.scoreConfidence = mood.scoreConfidence;
     next.mood.note = cleanNote(mood.note);
   }
-  const sleep = output.extracted.sleep;
-  if (!sleep) return next;
-  acceptSleepField(next.sleep, sleep, 'durationMinutes', 'durationConfidence', minimum);
-  if (next.sleep.durationMinutes !== current.sleep.durationMinutes) {
-    next.sleep.durationApproximate = sleep.durationApproximate;
-  }
-  acceptSleepField(
-    next.sleep,
-    sleep,
-    'subjectiveQualityScore',
-    'subjectiveQualityConfidence',
-    minimum
-  );
-  acceptSleepField(next.sleep, sleep, 'awakeningsCount', 'awakeningsConfidence', minimum);
-  if (next.sleep.awakeningsCount !== current.sleep.awakeningsCount) {
-    next.sleep.awakeningsApproximate = sleep.awakeningsApproximate;
-  }
-  if (sleep.multipleAwakenings && confidenceAccepted(sleep.awakeningsConfidence, minimum)) {
-    next.sleep.multipleAwakenings = true;
-  }
-  acceptSleepField(
-    next.sleep,
-    sleep,
-    'awakeDuringNightMinutes',
-    'awakeDuringNightConfidence',
-    minimum
-  );
-  if (next.sleep.awakeDuringNightMinutes !== current.sleep.awakeDuringNightMinutes) {
-    next.sleep.awakeDuringNightApproximate = sleep.awakeDuringNightApproximate;
-  }
-  acceptSleepField(next.sleep, sleep, 'restfulnessScore', 'restfulnessConfidence', minimum);
-  if (hasSleepState(next.sleep)) next.sleep.note = cleanNote(sleep.note) ?? next.sleep.note;
   return next;
-}
-
-function acceptSleepField(
-  target: DailyCheckInState['sleep'],
-  source: NonNullable<DailyCheckInOutput['extracted']['sleep']>,
-  valueKey:
-    | 'durationMinutes'
-    | 'subjectiveQualityScore'
-    | 'awakeningsCount'
-    | 'awakeDuringNightMinutes'
-    | 'restfulnessScore',
-  confidenceKey:
-    | 'durationConfidence'
-    | 'subjectiveQualityConfidence'
-    | 'awakeningsConfidence'
-    | 'awakeDuringNightConfidence'
-    | 'restfulnessConfidence',
-  minimum: number
-) {
-  if (accepted(source[valueKey], source[confidenceKey], minimum)) {
-    target[valueKey] = source[valueKey];
-    target[confidenceKey] = source[confidenceKey];
-  }
 }
 
 function accepted(
@@ -369,51 +392,20 @@ function confidenceAccepted(confidence: number | null, minimum: number): confide
   );
 }
 
-function hasUsefulState(state: DailyCheckInState): boolean {
-  return state.mood.score !== null || hasSleepState(state.sleep);
-}
-
-function hasSleepState(sleep: DailyCheckInState['sleep']): boolean {
+function hasStructuredSleep(
+  sleep: DailyCheckInState['sleep']
+): sleep is DailyCheckInState['sleep'] & {
+  durationMinutes: number;
+  wakeRestfulness: NonNullable<DailyCheckInState['sleep']['wakeRestfulness']>;
+  awakeTimeDuringNight: NonNullable<DailyCheckInState['sleep']['awakeTimeDuringNight']>;
+  recordDate: string;
+} {
   return (
-    [
-      sleep.durationMinutes,
-      sleep.subjectiveQualityScore,
-      sleep.awakeningsCount,
-      sleep.awakeDuringNightMinutes,
-      sleep.restfulnessScore
-    ].some((value) => value !== null) || sleep.multipleAwakenings
+    sleep.durationMinutes !== null &&
+    sleep.wakeRestfulness !== null &&
+    sleep.awakeTimeDuringNight !== null &&
+    sleep.recordDate !== null
   );
-}
-
-function missingFields(state: DailyCheckInState): string[] {
-  const fields: string[] = [];
-  if (state.mood.score === null) fields.push('mood');
-  for (const key of [
-    'durationMinutes',
-    'subjectiveQualityScore',
-    'awakeningsCount',
-    'awakeDuringNightMinutes',
-    'restfulnessScore'
-  ] as const) {
-    if (
-      state.sleep[key] === null &&
-      !(key === 'awakeningsCount' && state.sleep.multipleAwakenings)
-    ) {
-      fields.push(key);
-    }
-  }
-  return fields;
-}
-
-function nextFallbackQuestion(locale: DailyCheckInLocale, state: DailyCheckInState): string {
-  const next =
-    missingFields(state).find((field) => field !== 'awakeDuringNightMinutes') ?? 'restfulnessScore';
-  return fallbackQuestions[locale][next] ?? fallbackQuestions[locale].restfulnessScore;
-}
-
-function cleanQuestion(value: string | null): string | null {
-  const clean = value?.trim();
-  return clean ? clean.slice(0, 320) : null;
 }
 
 function cleanNote(value: string | null): string | null {
@@ -424,18 +416,16 @@ function cleanNote(value: string | null): string | null {
 function publicState(state: DailyCheckInState) {
   return {
     mood: state.mood.score === null ? null : { score: state.mood.score, note: state.mood.note },
-    sleep: hasSleepState(state.sleep)
+    sleep: hasStructuredSleep(state.sleep)
       ? {
           durationMinutes: state.sleep.durationMinutes,
-          durationApproximate: state.sleep.durationApproximate,
-          subjectiveQualityScore: state.sleep.subjectiveQualityScore,
-          awakeningsCount: state.sleep.awakeningsCount,
-          awakeningsApproximate: state.sleep.awakeningsApproximate,
-          multipleAwakenings: state.sleep.multipleAwakenings,
-          awakeDuringNightMinutes: state.sleep.awakeDuringNightMinutes,
-          awakeDuringNightApproximate: state.sleep.awakeDuringNightApproximate,
-          restfulnessScore: state.sleep.restfulnessScore,
-          note: state.sleep.note
+          wakeRestfulness: state.sleep.wakeRestfulness,
+          awakeTimeDuringNight: state.sleep.awakeTimeDuringNight,
+          sleepLatency: state.sleep.sleepLatency,
+          sleepOnsetTime: state.sleep.sleepOnsetTime,
+          wakeTime: state.sleep.wakeTime,
+          note: state.sleep.note,
+          recordDate: state.sleep.recordDate
         }
       : null
   };

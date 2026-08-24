@@ -1,5 +1,15 @@
 import { Transform } from 'class-transformer';
-import { IsIn, IsInt, IsObject, IsOptional, IsUUID, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min
+} from 'class-validator';
 import { WellbeingKind } from './wellbeing.types';
 
 export class ListWellbeingDto {
@@ -15,6 +25,32 @@ export class ListWellbeingDto {
   @IsIn(['mood_event', 'mood_daily_summary', 'sleep_record'], { each: true })
   kinds?: WellbeingKind[];
 }
+
+export class MoodOverviewDto {
+  @IsOptional()
+  @IsIn(['7d', '30d', '1y'])
+  period: '7d' | '30d' | '1y' = '7d';
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => Number(value))
+  @IsInt()
+  @Min(1)
+  page = 1;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => Number(value))
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  pageSize = 9;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  timezone = 'UTC';
+}
+
+export class SleepOverviewDto extends MoodOverviewDto {}
 
 export class CreateWellbeingDto {
   @IsUUID() clientRequestId: string;

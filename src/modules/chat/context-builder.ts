@@ -6,8 +6,13 @@ import { DataConsentPolicy } from '../users/data-consent.policy';
 import { DailyCheckInRepository } from '../daily-check-in/daily-check-in.repository';
 import { MoodRepository } from '../mood/mood.repository';
 import { SleepRepository } from '../sleep/sleep.repository';
+import {
+  AWAKE_TIME_DURING_NIGHT_VALUES,
+  SLEEP_QUALITY_CLASSIFICATIONS,
+  WAKE_RESTFULNESS_VALUES
+} from '../sleep/sleep-quality';
 import { ChatSessionRepository } from './chat-session.repository';
-import { ContextBuildResult } from './conversation-context';
+import { ContextBuildResult, ConversationContext } from './conversation-context';
 
 @Injectable()
 export class ContextBuilder {
@@ -165,15 +170,48 @@ function publicMood(data: Record<string, unknown>) {
     : null;
 }
 
-function publicSleep(data: Record<string, unknown>) {
-  const allowed = [
-    'durationMinutes',
-    'subjectiveQualityScore',
-    'awakeningCount',
-    'multipleAwakenings',
-    'awakeDuringNightMinutes',
-    'restfulnessScore',
-    'note'
-  ];
-  return Object.fromEntries(Object.entries(data).filter(([key]) => allowed.includes(key)));
+function publicSleep(
+  data: Record<string, unknown>
+): NonNullable<ConversationContext['todayCheckIn']>['sleep'] {
+  const durationMinutes = preservedValue<number>(data.durationMinutes, 'number');
+  const wakeRestfulness = enumValue(data.wakeRestfulness, WAKE_RESTFULNESS_VALUES);
+  const awakeTimeDuringNight = enumValue(data.awakeTimeDuringNight, AWAKE_TIME_DURING_NIGHT_VALUES);
+  const quality = data.sleepQuality;
+  if (
+    !durationMinutes ||
+    !wakeRestfulness ||
+    !awakeTimeDuringNight ||
+    !quality ||
+    typeof quality !== 'object' ||
+    Array.isArray(quality)
+  ) {
+    return null;
+  }
+  const item = quality as Record<string, unknown>;
+  const classification = enumValue(item.classification, SLEEP_QUALITY_CLASSIFICATIONS);
+  if (typeof item.score !== 'number' || !classification) return null;
+  return {
+    durationMinutes,
+    wakeRestfulness,
+    awakeTimeDuringNight,
+    sleepQuality: { score: item.score, classification },
+    ...(typeof data.sleepLatency === 'string' ? { sleepLatency: data.sleepLatency as never } : {}),
+    ...(data.sleepOnsetTime ? { sleepOnsetTime: data.sleepOnsetTime as never } : {}),
+    ...(data.wakeTime ? { wakeTime: data.wakeTime as never } : {}),
+    ...(typeof data.note === 'string' ? { note: data.note } : {})
+  };
+}
+
+function enumValue<const T extends readonly string[]>(value: unknown, values: T) {
+  return typeof value === 'string' && values.includes(value) ? (value as T[number]) : undefined;
+}
+
+function preservedValue<T>(value: unknown, kind: 'number' | 'string') {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const item = value as Record<string, unknown>;
+  if (typeof item.value !== kind) return undefined;
+  return {
+    value: item.value as T,
+    precision: item.precision === 'approximate' ? ('approximate' as const) : ('exact' as const)
+  };
 }

@@ -8,6 +8,7 @@ import { HydratedDocument } from 'mongoose';
 export class SleepMongo {
   @Prop({ type: String, required: true }) _id: string;
   @Prop({ type: String, required: true, index: true }) user_id: string;
+  @Prop({ type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ }) record_date: string;
   @Prop({ type: Object, required: true }) data: Record<string, unknown>;
   @Prop({ type: Object, required: true }) temporal_reference: Record<string, unknown>;
   @Prop({ type: Object, required: true }) provenance: Record<string, unknown>;
@@ -36,4 +37,8 @@ SleepSchema.index(
   { user_id: 1, source_event_id: 1 },
   { unique: true, partialFilterExpression: { source_event_id: { $type: 'string' } } }
 );
-SleepSchema.index({ user_id: 1, 'temporal_reference.localDate': -1 });
+SleepSchema.index(
+  { user_id: 1, record_date: 1 },
+  { unique: true, name: 'unique_sleep_record_per_user_day' }
+);
+SleepSchema.index({ user_id: 1, record_date: -1 });

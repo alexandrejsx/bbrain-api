@@ -12,8 +12,8 @@ export class DailyCheckInMongo {
   @Prop({ type: String, required: true }) timezone: string;
   @Prop({ type: String, required: true, enum: ['pt-BR', 'en-US', 'es-ES'] }) locale: string;
   @Prop({ type: String, required: true, enum: ['in_progress', 'completed'] }) status: string;
-  @Prop({ type: Number, required: true, min: 1, max: 5 }) question_count: number;
-  @Prop({ type: Number, required: true, min: 1, max: 5 }) max_questions: number;
+  @Prop({ type: Number, required: true, min: 1, max: 2 }) question_count: number;
+  @Prop({ type: Number, required: true, min: 1, max: 2 }) max_questions: number;
   @Prop({ type: Object, required: true }) state: Record<string, unknown>;
   @Prop({ type: String }) next_question?: string;
   @Prop({ type: [Object], required: true, default: [] }) processed_requests: Array<{

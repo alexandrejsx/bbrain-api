@@ -1,4 +1,4 @@
-interface MongoDBConfig {
+export interface MongoDBConfig {
   uri: string;
   dbName: string;
 }
@@ -199,6 +199,11 @@ const parseModels = (prefix: 'OPENAI' | 'GEMINI', defaults: ModelRoleConfig): Mo
   };
 };
 
+export const resolveMongoDbConfig = (): MongoDBConfig => ({
+  uri: process.env.MONGODB_URI || 'mongodb://localhost:27017',
+  dbName: process.env.MONGODB_DATABASE_NAME || 'bbrain'
+});
+
 const config = (): AppConfig => ({
   port: Number(process.env.PORT || 9090),
   cors: {
@@ -216,10 +221,7 @@ const config = (): AppConfig => ({
     ),
     fingerprintSecret: resolveConversationFingerprintSecret()
   },
-  mongoDb: {
-    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017',
-    dbName: process.env.MONGODB_DATABASE_NAME || 'bbrain'
-  },
+  mongoDb: resolveMongoDbConfig(),
   auth: {
     jwtSecret: resolveJwtSecret(),
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',

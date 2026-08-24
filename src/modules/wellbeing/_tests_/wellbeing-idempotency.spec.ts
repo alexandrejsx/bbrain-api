@@ -21,6 +21,7 @@ function stored(data: Record<string, unknown>, kind = 'mood_event') {
   return {
     _id: 'record-1',
     user_id: 'user-1',
+    record_date: '2026-08-14',
     kind,
     data,
     temporal_reference: temporalReference,
@@ -41,6 +42,7 @@ describe('manual wellbeing idempotency', () => {
     await expect(
       repository.create({
         userId: 'user-1',
+        recordDate: '2026-08-14',
         kind: 'mood_event',
         data,
         temporalReference,
@@ -59,6 +61,7 @@ describe('manual wellbeing idempotency', () => {
     await expect(
       repository.create({
         userId: 'user-1',
+        recordDate: '2026-08-14',
         kind: 'sleep_record',
         data,
         temporalReference,
@@ -78,6 +81,7 @@ describe('manual wellbeing idempotency', () => {
     await expect(
       repository.create({
         userId: 'user-1',
+        recordDate: '2026-08-14',
         kind: 'mood_event',
         data: { descriptors: ['calmo'] },
         temporalReference,

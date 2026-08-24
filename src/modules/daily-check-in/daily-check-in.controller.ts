@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -11,10 +12,18 @@ import {
   UseGuards
 } from '@nestjs/common';
 import {
+  InvalidWellbeingRecordError,
+  WellbeingDailyRecordConflictError
+} from '../wellbeing/wellbeing.types';
+import {
   AuthenticatedRequest,
   JwtAuthGuard
 } from '../../infrastructure/http/guards/jwt-auth.guard';
-import { AnswerDailyCheckInDto, StartDailyCheckInDto } from './daily-check-in.dto';
+import {
+  AnswerDailyCheckInDto,
+  StartDailyCheckInDto,
+  SubmitDailyCheckInSleepDto
+} from './daily-check-in.dto';
 import { DailyCheckInService } from './daily-check-in.service';
 import {
   DailyCheckInLockedError,
@@ -61,6 +70,15 @@ export class DailyCheckInController {
     }
   }
 
+  @Post('sleep')
+  async submitSleep(@Req() request: AuthenticatedRequest, @Body() dto: SubmitDailyCheckInSleepDto) {
+    try {
+      return await this.service.submitSleep({ userId: request.user!.id, ...dto });
+    } catch (error) {
+      this.rethrow(error);
+    }
+  }
+
   private rethrow(error: unknown): never {
     if (error instanceof DailyCheckInLockedError) {
       throw new ForbiddenException({
@@ -90,6 +108,16 @@ export class DailyCheckInController {
       throw new ServiceUnavailableException(
         'Não foi possível continuar o check-in agora. Tente novamente em instantes.'
       );
+    }
+    if (error instanceof WellbeingDailyRecordConflictError) {
+      throw new ConflictException({
+        code: 'WELLBEING_DAILY_RECORD_EXISTS',
+        message: 'Já existe um registro de sono para esta data.',
+        details: { recordDate: error.recordDate }
+      });
+    }
+    if (error instanceof InvalidWellbeingRecordError) {
+      throw new BadRequestException('O registro de sono contém dados inválidos ou incompletos.');
     }
     throw error;
   }

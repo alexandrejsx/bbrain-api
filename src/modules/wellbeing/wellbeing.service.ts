@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { MoodService } from '../mood/mood.service';
 import { SleepService } from '../sleep/sleep.service';
 import { WellbeingKind, WellbeingNotFoundError } from './wellbeing.types';
+import { MoodPeriod } from '../mood/mood-level';
+import { SleepPeriod } from '../sleep/sleep.service';
 
 @Injectable()
 export class WellbeingService {
@@ -25,6 +27,20 @@ export class WellbeingService {
     return [...mood, ...sleep].sort(
       (left, right) => right.capturedAt.getTime() - left.capturedAt.getTime()
     );
+  }
+
+  moodOverview(
+    userId: string,
+    input: { period: MoodPeriod; page: number; pageSize: number; timezone: string }
+  ) {
+    return this.mood.overview({ userId, ...input });
+  }
+
+  sleepOverview(
+    userId: string,
+    input: { period: SleepPeriod; page: number; pageSize: number; timezone: string }
+  ) {
+    return this.sleep.overview({ userId, ...input });
   }
 
   create(

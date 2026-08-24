@@ -17,6 +17,8 @@
     "docker:up": "docker compose up -d mongo",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f mongo",
+    "seeds:local": "cross-env SEED_ENV=local NODE_ENV=local env-cmd -f .env ts-node src/seeds/cli.ts",
+    "seeds:prod": "cross-env SEED_ENV=production NODE_ENV=production ts-node src/seeds/cli.ts",
     "test": "jest"
   },
   "dependencies": {

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { MoodRepository } from './mood.repository';
 import {
   InvalidWellbeingRecordError,
+  WellbeingDailyRecordConflictError,
   WellbeingNotFoundError,
   WellbeingRecord
 } from '../wellbeing/wellbeing.types';
@@ -10,8 +11,24 @@ import {
   cleanStringArray,
   finiteNumber,
   mergePatch,
-  normalizeTemporalReference
+  normalizeTemporalReference,
+  recordDateFromTemporalReference
 } from '../wellbeing/wellbeing.validation';
+import {
+  isMoodLevel,
+  MoodLevel,
+  moodLevelFromScore,
+  MoodPeriod,
+  moodScoreFromData,
+  representativeMoodScore
+} from './mood-level';
+
+type MoodBucket = {
+  startsOn: string;
+  endsOn: string;
+  level: MoodLevel | null;
+  recordCount: number;
+};
 
 @Injectable()
 export class MoodService {
@@ -19,6 +36,68 @@ export class MoodService {
 
   list(userId: string, kinds?: string[]) {
     return this.repository.list(userId, kinds);
+  }
+
+  async overview(input: {
+    userId: string;
+    period: MoodPeriod;
+    page: number;
+    pageSize: number;
+    timezone: string;
+  }) {
+    const range = moodPeriodRange(input.period, input.timezone);
+    const [allRecords, history] = await Promise.all([
+      this.repository.listInRange(input.userId, range.startsOn, range.endsOn),
+      this.repository.listPageInRange(
+        input.userId,
+        range.startsOn,
+        range.endsOn,
+        input.page,
+        input.pageSize
+      )
+    ]);
+    const buckets = createBuckets(input.period, range.startsOn, range.endsOn);
+    const scoresByBucket = buckets.map(() => [] as number[]);
+    const recordCountsByBucket = buckets.map(() => 0);
+    const allScores: number[] = [];
+
+    for (const record of allRecords) {
+      const score = moodScoreFromData(record.data);
+      const bucketIndex = buckets.findIndex(
+        (bucket) => record.recordDate >= bucket.startsOn && record.recordDate <= bucket.endsOn
+      );
+      if (bucketIndex < 0) continue;
+      recordCountsByBucket[bucketIndex] += 1;
+      if (score === null) continue;
+      scoresByBucket[bucketIndex].push(score);
+      allScores.push(score);
+    }
+
+    const trend: MoodBucket[] = buckets.map((bucket, index) => {
+      const scores = scoresByBucket[index];
+      return {
+        ...bucket,
+        level: scores.length ? moodLevelFromScore(average(scores)) : null,
+        recordCount: recordCountsByBucket[index]
+      };
+    });
+
+    return {
+      period: input.period,
+      range,
+      summary: {
+        level: allScores.length ? moodLevelFromScore(average(allScores)) : null,
+        recordCount: allRecords.length
+      },
+      trend,
+      history: {
+        items: history.items,
+        page: input.page,
+        pageSize: input.pageSize,
+        totalItems: history.totalItems,
+        totalPages: Math.ceil(history.totalItems / input.pageSize)
+      }
+    };
   }
 
   async createManual(input: {
@@ -30,12 +109,14 @@ export class MoodService {
   }): Promise<WellbeingRecord> {
     const now = new Date();
     const data = normalizeMoodData(input.data, input.kind);
+    const temporalReference = normalizeTemporalReference(input.temporalReference);
     const provenance = { source: 'manual' as const };
     const record = await this.repository.create({
       userId: input.userId,
+      recordDate: recordDateFromTemporalReference(temporalReference),
       kind: input.kind,
       data,
-      temporalReference: normalizeTemporalReference(input.temporalReference),
+      temporalReference,
       provenance,
       provenanceHistory: [provenance],
       revision: 1,
@@ -65,24 +146,33 @@ export class MoodService {
       localDate: input.localDate,
       confidenceByField: { moodScore: input.scoreConfidence }
     };
-    const record = await this.repository.create({
-      userId: input.userId,
-      kind: 'mood_event',
-      data,
-      temporalReference: {
-        kind: 'specific_day',
-        localDate: input.localDate,
-        timezone: input.timezone,
-        precision: 'exact'
-      },
-      provenance,
-      provenanceHistory: [provenance],
-      revision: 1,
-      sessionId: input.checkInId,
-      sourceEventId: input.sourceEventId,
-      capturedAt: input.capturedAt,
-      promptVersion: input.promptVersion
-    });
+    let record: WellbeingRecord | null;
+    try {
+      record = await this.repository.create({
+        userId: input.userId,
+        recordDate: input.localDate,
+        kind: 'mood_event',
+        data,
+        temporalReference: {
+          kind: 'specific_day',
+          localDate: input.localDate,
+          timezone: input.timezone,
+          precision: 'exact'
+        },
+        provenance,
+        provenanceHistory: [provenance],
+        revision: 1,
+        sessionId: input.checkInId,
+        sourceEventId: input.sourceEventId,
+        capturedAt: input.capturedAt,
+        promptVersion: input.promptVersion
+      });
+    } catch (error) {
+      if (!(error instanceof WellbeingDailyRecordConflictError)) throw error;
+      const existing = await this.repository.findByRecordDate(input.userId, input.localDate);
+      if (!existing) throw error;
+      return existing;
+    }
     const existing =
       record ?? (await this.repository.findBySourceEventId(input.userId, input.sourceEventId));
     if (!existing) throw new Error('Guided mood idempotency record not found');
@@ -102,6 +192,7 @@ export class MoodService {
     const temporal = input.temporalReference
       ? normalizeTemporalReference(input.temporalReference)
       : current.temporalReference;
+    const recordDate = recordDateFromTemporalReference(temporal);
     const provenance = {
       source: 'manual_correction' as const,
       correctedAt: new Date().toISOString()
@@ -110,6 +201,7 @@ export class MoodService {
       input.userId,
       input.id,
       input.expectedRevision,
+      recordDate,
       data,
       temporal,
       provenance
@@ -136,9 +228,8 @@ function normalizeMoodData(
   const energy = finiteNumber(raw.energy, 0, 10);
   const valence = finiteNumber(raw.valence, -1, 1);
   const moodScore = finiteNumber(raw.moodScore, 0, 10);
-  if (moodScore !== undefined && !Number.isInteger(moodScore)) {
-    throw new InvalidWellbeingRecordError();
-  }
+  const moodLevel = isMoodLevel(raw.moodLevel) ? raw.moodLevel : undefined;
+  const compatibleMoodScore = moodLevel ? representativeMoodScore(moodLevel) : moodScore;
   const intensityDescriptor = cleanString(raw.intensityDescriptor, 80);
   if (
     !primaryEmotion &&
@@ -146,7 +237,7 @@ function normalizeMoodData(
     !explicitRating &&
     !explicitIntensity &&
     intensity === undefined &&
-    moodScore === undefined
+    compatibleMoodScore === undefined
   ) {
     throw new InvalidWellbeingRecordError();
   }
@@ -159,13 +250,15 @@ function normalizeMoodData(
         ? { descriptors: [primaryEmotion] }
         : {}),
     ...(raw.isMixed === true ? { isMixed: true } : {}),
+    ...(raw.isUnstable === true ? { isUnstable: true } : {}),
     ...(intensityDescriptor ? { intensityDescriptor } : {}),
     ...(explicitRating ? { explicitRating } : {}),
     ...(explicitIntensity ? { explicitIntensity } : {}),
     ...(intensity === undefined ? {} : { intensity }),
     ...(energy === undefined ? {} : { energy }),
     ...(valence === undefined ? {} : { valence }),
-    ...(moodScore === undefined ? {} : { moodScore }),
+    ...(moodLevel ? { moodLevel } : {}),
+    ...(compatibleMoodScore === undefined ? {} : { moodScore: compatibleMoodScore }),
     ...(cleanString(raw.note, 240) ? { note: cleanString(raw.note, 240) } : {}),
     ...(cleanString(raw.context, 180) ? { context: cleanString(raw.context, 180) } : {}),
     ...(kind === 'mood_daily_summary'
@@ -180,6 +273,87 @@ function normalizeMoodData(
         }
       : {})
   };
+}
+
+function average(values: readonly number[]) {
+  return values.reduce((total, value) => total + value, 0) / values.length;
+}
+
+function formatDateKey(date: Date, timezone: string) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  } catch {
+    throw new InvalidWellbeingRecordError();
+  }
+}
+
+function moodPeriodRange(period: MoodPeriod, timezone: string) {
+  const endsOn = formatDateKey(new Date(), timezone);
+  const end = new Date(`${endsOn}T12:00:00.000Z`);
+  const start = new Date(end);
+
+  if (period === '7d' || period === '30d') {
+    start.setUTCDate(start.getUTCDate() - (period === '7d' ? 6 : 29));
+  } else {
+    start.setUTCDate(1);
+    start.setUTCMonth(start.getUTCMonth() - 11);
+  }
+
+  return { startsOn: start.toISOString().slice(0, 10), endsOn };
+}
+
+function createBuckets(period: MoodPeriod, startsOn: string, endsOn: string): MoodBucket[] {
+  if (period === '1y') return createMonthBuckets(startsOn, endsOn);
+  return createDayBuckets(startsOn, endsOn, period === '7d' ? 1 : 7);
+}
+
+function createDayBuckets(startsOn: string, endsOn: string, daysPerBucket: number): MoodBucket[] {
+  const buckets: MoodBucket[] = [];
+  const end = new Date(`${endsOn}T12:00:00.000Z`);
+  let cursor = new Date(`${startsOn}T12:00:00.000Z`);
+
+  while (cursor <= end) {
+    const bucketStart = new Date(cursor);
+    const bucketEnd = new Date(cursor);
+    bucketEnd.setUTCDate(bucketEnd.getUTCDate() + daysPerBucket - 1);
+    if (bucketEnd > end) bucketEnd.setTime(end.getTime());
+    buckets.push({
+      startsOn: bucketStart.toISOString().slice(0, 10),
+      endsOn: bucketEnd.toISOString().slice(0, 10),
+      level: null,
+      recordCount: 0
+    });
+    cursor = new Date(bucketEnd);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return buckets;
+}
+
+function createMonthBuckets(startsOn: string, endsOn: string): MoodBucket[] {
+  const buckets: MoodBucket[] = [];
+  const end = new Date(`${endsOn}T12:00:00.000Z`);
+  let cursor = new Date(`${startsOn}T12:00:00.000Z`);
+
+  while (cursor <= end) {
+    const bucketStart = new Date(cursor);
+    const bucketEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0, 12));
+    if (bucketEnd > end) bucketEnd.setTime(end.getTime());
+    buckets.push({
+      startsOn: bucketStart.toISOString().slice(0, 10),
+      endsOn: bucketEnd.toISOString().slice(0, 10),
+      level: null,
+      recordCount: 0
+    });
+    cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1, 12));
+  }
+  return buckets;
 }
 
 function normalizeRating(value: unknown) {

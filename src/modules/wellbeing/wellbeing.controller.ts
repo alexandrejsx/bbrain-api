@@ -22,6 +22,7 @@ import {
 import {
   InvalidWellbeingRecordError,
   toPublicWellbeingRecord,
+  WellbeingDailyRecordConflictError,
   WellbeingIdempotencyConflictError,
   WellbeingNotFoundError,
   WellbeingRevisionConflictError
@@ -30,9 +31,12 @@ import {
   CorrectWellbeingDto,
   CreateWellbeingDto,
   DeleteWellbeingDto,
-  ListWellbeingDto
+  ListWellbeingDto,
+  MoodOverviewDto,
+  SleepOverviewDto
 } from './wellbeing.dto';
 import { WellbeingService } from './wellbeing.service';
+import { moodLevelFromRecord } from '../mood/mood-level';
 
 @Controller('wellbeing-history/observations')
 @UseGuards(JwtAuthGuard)
@@ -44,6 +48,41 @@ export class WellbeingController {
     return {
       items: (await this.service.list(request.user!.id, query.kinds)).map(toPublicWellbeingRecord)
     };
+  }
+
+  @Get('mood')
+  async moodOverview(@Req() request: AuthenticatedRequest, @Query() query: MoodOverviewDto) {
+    try {
+      const overview = await this.service.moodOverview(request.user!.id, query);
+      return {
+        ...overview,
+        history: {
+          ...overview.history,
+          items: overview.history.items.map((record) => ({
+            ...toPublicWellbeingRecord(record),
+            presentationLevel: moodLevelFromRecord(record)
+          }))
+        }
+      };
+    } catch (error) {
+      this.rethrow(error);
+    }
+  }
+
+  @Get('sleep')
+  async sleepOverview(@Req() request: AuthenticatedRequest, @Query() query: SleepOverviewDto) {
+    try {
+      const overview = await this.service.sleepOverview(request.user!.id, query);
+      return {
+        ...overview,
+        history: {
+          ...overview.history,
+          items: overview.history.items.map(toPublicWellbeingRecord)
+        }
+      };
+    } catch (error) {
+      this.rethrow(error);
+    }
   }
 
   @Post()
@@ -90,6 +129,13 @@ export class WellbeingController {
     }
     if (error instanceof WellbeingIdempotencyConflictError) {
       throw new ConflictException('Este identificador de requisição já foi usado.');
+    }
+    if (error instanceof WellbeingDailyRecordConflictError) {
+      throw new ConflictException({
+        code: 'WELLBEING_DAILY_RECORD_EXISTS',
+        message: 'Já existe um registro para esta data. Edite o registro existente.',
+        details: { recordDate: error.recordDate }
+      });
     }
     if (error instanceof InvalidWellbeingRecordError) {
       throw new BadRequestException('O registro contém dados inválidos ou incompletos.');

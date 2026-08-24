@@ -82,10 +82,6 @@ const nullableScore = {
 const nullableConfidence = {
   anyOf: [{ type: 'number', minimum: 0, maximum: 1 }, { type: 'null' }]
 };
-const nullableNonNegativeInteger = {
-  anyOf: [{ type: 'integer', minimum: 0, maximum: 1440 }, { type: 'null' }]
-};
-
 export const DAILY_CHECK_IN_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
@@ -94,7 +90,7 @@ export const DAILY_CHECK_IN_SCHEMA: Record<string, unknown> = {
     extracted: {
       type: 'object',
       additionalProperties: false,
-      required: ['mood', 'sleep'],
+      required: ['mood'],
       properties: {
         mood: {
           anyOf: [
@@ -106,49 +102,6 @@ export const DAILY_CHECK_IN_SCHEMA: Record<string, unknown> = {
               properties: {
                 score: nullableScore,
                 scoreConfidence: nullableConfidence,
-                note: nullableString
-              }
-            }
-          ]
-        },
-        sleep: {
-          anyOf: [
-            { type: 'null' },
-            {
-              type: 'object',
-              additionalProperties: false,
-              required: [
-                'durationMinutes',
-                'durationConfidence',
-                'durationApproximate',
-                'subjectiveQualityScore',
-                'subjectiveQualityConfidence',
-                'awakeningsCount',
-                'awakeningsConfidence',
-                'awakeningsApproximate',
-                'multipleAwakenings',
-                'awakeDuringNightMinutes',
-                'awakeDuringNightConfidence',
-                'awakeDuringNightApproximate',
-                'restfulnessScore',
-                'restfulnessConfidence',
-                'note'
-              ],
-              properties: {
-                durationMinutes: nullableNonNegativeInteger,
-                durationConfidence: nullableConfidence,
-                durationApproximate: { type: 'boolean' },
-                subjectiveQualityScore: nullableScore,
-                subjectiveQualityConfidence: nullableConfidence,
-                awakeningsCount: nullableNonNegativeInteger,
-                awakeningsConfidence: nullableConfidence,
-                awakeningsApproximate: { type: 'boolean' },
-                multipleAwakenings: { type: 'boolean' },
-                awakeDuringNightMinutes: nullableNonNegativeInteger,
-                awakeDuringNightConfidence: nullableConfidence,
-                awakeDuringNightApproximate: { type: 'boolean' },
-                restfulnessScore: nullableScore,
-                restfulnessConfidence: nullableConfidence,
                 note: nullableString
               }
             }

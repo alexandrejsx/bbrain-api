@@ -19,12 +19,16 @@ export interface ConversationContext {
     localDate: string;
     mood: null | { score: number; note?: string };
     sleep: null | {
-      durationMinutes?: { value: number; precision: 'exact' | 'approximate' };
-      subjectiveQualityScore?: number;
-      awakeningCount?: { value: number; precision: 'exact' | 'approximate' };
-      multipleAwakenings?: boolean;
-      awakeDuringNightMinutes?: { value: number; precision: 'exact' | 'approximate' };
-      restfulnessScore?: number;
+      durationMinutes: { value: number; precision: 'exact' | 'approximate' };
+      wakeRestfulness: 'very_tired' | 'tired' | 'fairly_rested' | 'rested';
+      awakeTimeDuringNight: 'under_15' | '15_to_29' | '30_to_59' | '60_or_more';
+      sleepQuality: {
+        score: number;
+        classification: 'very_bad' | 'bad' | 'fair' | 'good' | 'very_good';
+      };
+      sleepLatency?: 'up_to_15' | '16_to_30' | '31_to_60' | 'over_60' | 'unknown';
+      sleepOnsetTime?: { value: string; precision: 'exact' | 'approximate' };
+      wakeTime?: { value: string; precision: 'exact' | 'approximate' };
       note?: string;
     };
   };

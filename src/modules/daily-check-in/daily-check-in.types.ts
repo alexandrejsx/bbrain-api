@@ -10,20 +10,13 @@ export interface AcceptedMoodState {
 
 export interface AcceptedSleepState {
   durationMinutes: number | null;
-  durationConfidence: number | null;
-  durationApproximate: boolean;
-  subjectiveQualityScore: number | null;
-  subjectiveQualityConfidence: number | null;
-  awakeningsCount: number | null;
-  awakeningsConfidence: number | null;
-  awakeningsApproximate: boolean;
-  multipleAwakenings: boolean;
-  awakeDuringNightMinutes: number | null;
-  awakeDuringNightConfidence: number | null;
-  awakeDuringNightApproximate: boolean;
-  restfulnessScore: number | null;
-  restfulnessConfidence: number | null;
+  wakeRestfulness: 'very_tired' | 'tired' | 'fairly_rested' | 'rested' | null;
+  awakeTimeDuringNight: 'under_15' | '15_to_29' | '30_to_59' | '60_or_more' | null;
+  sleepLatency: 'up_to_15' | '16_to_30' | '31_to_60' | 'over_60' | 'unknown' | null;
+  sleepOnsetTime: string | null;
+  wakeTime: string | null;
   note: string | null;
+  recordDate: string | null;
 }
 
 export interface DailyCheckInState {
@@ -56,20 +49,13 @@ export const EMPTY_CHECK_IN_STATE: DailyCheckInState = {
   mood: { score: null, scoreConfidence: null, note: null },
   sleep: {
     durationMinutes: null,
-    durationConfidence: null,
-    durationApproximate: false,
-    subjectiveQualityScore: null,
-    subjectiveQualityConfidence: null,
-    awakeningsCount: null,
-    awakeningsConfidence: null,
-    awakeningsApproximate: false,
-    multipleAwakenings: false,
-    awakeDuringNightMinutes: null,
-    awakeDuringNightConfidence: null,
-    awakeDuringNightApproximate: false,
-    restfulnessScore: null,
-    restfulnessConfidence: null,
-    note: null
+    wakeRestfulness: null,
+    awakeTimeDuringNight: null,
+    sleepLatency: null,
+    sleepOnsetTime: null,
+    wakeTime: null,
+    note: null,
+    recordDate: null
   }
 };
 
